@@ -1,0 +1,31 @@
+{
+  "name": "frontend-svelte",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Frontend Svelte pour le projet DevOps",
+  "main": "index.js",
+  "scripts": {
+    "build": "rollup -c",
+    "dev": "rollup -c -w",
+    "start": "sirv public --no-cors --host --dev --port 8080",
+    "validate": "svelte-check"
+  },
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "^25.0.0",
+    "@rollup/plugin-node-resolve": "^15.0.0",
+    "@rollup/plugin-replace": "^6.0.2",
+    "@rollup/plugin-terser": "^0.4.4",
+    "rollup": "^4.0.0",
+    "rollup-plugin-css-only": "^4.5.0",
+    "rollup-plugin-livereload": "^2.0.5",
+    "rollup-plugin-svelte": "^7.1.6",
+    "svelte": "^4.2.0",
+    "svelte-check": "^3.6.0"
+  },
+  "dependencies": {
+    "sirv-cli": "^2.0.0"
+  },
+  "engines": {
+    "node": ">=14"
+  }
+}
