@@ -12,6 +12,7 @@ provider "aws" {
   region = var.aws_region
 }
 
+# VPC
 resource "aws_vpc" "main" {
   cidr_block           = "10.0.0.0/16"
   enable_dns_hostnames = true
@@ -22,6 +23,7 @@ resource "aws_vpc" "main" {
   }
 }
 
+# Internet Gateway
 resource "aws_internet_gateway" "main" {
   vpc_id = aws_vpc.main.id
 
@@ -30,20 +32,19 @@ resource "aws_internet_gateway" "main" {
   }
 }
 
+# Public Subnet
 resource "aws_subnet" "public" {
-  count = 2
-
   vpc_id                  = aws_vpc.main.id
-  cidr_block              = "10.0.${count.index + 1}.0/24"
-  availability_zone       = "${var.aws_region}${count.index == 0 ? "a" : "b"}"
+  cidr_block              = "10.0.1.0/24"
+  availability_zone       = "${var.aws_region}a"
   map_public_ip_on_launch = true
 
   tags = {
-    Name = "${var.project_name}-public-${count.index + 1}"
-    "kubernetes.io/role/elb" = "1"
+    Name = "${var.project_name}-public-subnet"
   }
 }
 
+# Route Table
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.main.id
 
@@ -57,16 +58,48 @@ resource "aws_route_table" "public" {
   }
 }
 
+# Route Table Association
 resource "aws_route_table_association" "public" {
-  count = 2
-
-  subnet_id      = aws_subnet.public[count.index].id
+  subnet_id      = aws_subnet.public.id
   route_table_id = aws_route_table.public.id
 }
 
-resource "aws_security_group" "eks_cluster" {
-  name_prefix = "${var.project_name}-eks-cluster"
+# Security Group pour les instances
+resource "aws_security_group" "web" {
+  name_prefix = "${var.project_name}-web"
   vpc_id      = aws_vpc.main.id
+
+  # SSH
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  # HTTP
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  # Backend API
+  ingress {
+    from_port   = 3000
+    to_port     = 3000
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  # MongoDB
+  ingress {
+    from_port   = 27017
+    to_port     = 27017
+    protocol    = "tcp"
+    cidr_blocks = ["10.0.0.0/16"]  # Seulement depuis le VPC
+  }
 
   egress {
     from_port   = 0
@@ -76,131 +109,91 @@ resource "aws_security_group" "eks_cluster" {
   }
 
   tags = {
-    Name = "${var.project_name}-eks-cluster-sg"
+    Name = "${var.project_name}-web-sg"
   }
 }
 
-resource "aws_security_group" "eks_node" {
-  name_prefix = "${var.project_name}-eks-node"
-  vpc_id      = aws_vpc.main.id
+# Récupérer l'AMI Amazon Linux 2023 la plus récente
+data "aws_ami" "amazon_linux" {
+  most_recent = true
+  owners      = ["amazon"]
 
-  ingress {
-    from_port = 0
-    to_port   = 65535
-    protocol  = "tcp"
-    self      = true
+  filter {
+    name   = "name"
+    values = ["al2023-ami-*-x86_64"]
   }
 
-  ingress {
-    from_port       = 1025
-    to_port         = 65535
-    protocol        = "tcp"
-    security_groups = [aws_security_group.eks_cluster.id]
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
   }
+}
 
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+# Instance pour MongoDB
+resource "aws_instance" "mongodb" {
+  ami                     = data.aws_ami.amazon_linux.id
+  instance_type           = "t3.micro"
+  key_name                = var.ssh_key_name
+  vpc_security_group_ids  = [aws_security_group.web.id]
+  subnet_id               = aws_subnet.public.id
+
+  user_data = <<-EOF
+    #!/bin/bash
+    yum update -y
+    yum install -y docker
+    systemctl start docker
+    systemctl enable docker
+    usermod -a -G docker ec2-user
+  EOF
 
   tags = {
-    Name = "${var.project_name}-eks-node-sg"
+    Name = "${var.project_name}-mongodb"
+    Role = "database"
   }
 }
 
-resource "aws_iam_role" "eks_cluster" {
-  name = "${var.project_name}-eks-cluster-role"
+# Instance pour Backend
+resource "aws_instance" "backend" {
+  ami                     = data.aws_ami.amazon_linux.id
+  instance_type           = "t3.micro"
+  key_name                = var.ssh_key_name
+  vpc_security_group_ids  = [aws_security_group.web.id]
+  subnet_id               = aws_subnet.public.id
 
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole"
-        Effect = "Allow"
-        Principal = {
-          Service = "eks.amazonaws.com"
-        }
-      }
-    ]
-  })
-}
+  user_data = <<-EOF
+    #!/bin/bash
+    yum update -y
+    yum install -y docker
+    systemctl start docker
+    systemctl enable docker
+    usermod -a -G docker ec2-user
+  EOF
 
-resource "aws_iam_role_policy_attachment" "eks_cluster_policy" {
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
-  role       = aws_iam_role.eks_cluster.name
-}
-
-resource "aws_iam_role" "eks_node" {
-  name = "${var.project_name}-eks-node-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole"
-        Effect = "Allow"
-        Principal = {
-          Service = "ec2.amazonaws.com"
-        }
-      }
-    ]
-  })
-}
-
-resource "aws_iam_role_policy_attachment" "eks_worker_node_policy" {
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
-  role       = aws_iam_role.eks_node.name
-}
-
-resource "aws_iam_role_policy_attachment" "eks_cni_policy" {
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
-  role       = aws_iam_role.eks_node.name
-}
-
-resource "aws_iam_role_policy_attachment" "eks_container_registry_policy" {
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
-  role       = aws_iam_role.eks_node.name
-}
-
-resource "aws_eks_cluster" "main" {
-  name     = "${var.project_name}-cluster"
-  role_arn = aws_iam_role.eks_cluster.arn
-
-  vpc_config {
-    subnet_ids         = aws_subnet.public[*].id
-    security_group_ids = [aws_security_group.eks_cluster.id]
+  tags = {
+    Name = "${var.project_name}-backend"
+    Role = "backend"
   }
-
-  depends_on = [
-    aws_iam_role_policy_attachment.eks_cluster_policy
-  ]
 }
 
-resource "aws_eks_node_group" "main" {
-  cluster_name    = aws_eks_cluster.main.name
-  node_group_name = "${var.project_name}-nodes"
-  node_role_arn   = aws_iam_role.eks_node.arn
-  subnet_ids      = aws_subnet.public[*].id
+# Instance pour Frontend
+resource "aws_instance" "frontend" {
+  ami                     = data.aws_ami.amazon_linux.id
+  instance_type           = "t3.micro"
+  key_name                = var.ssh_key_name
+  vpc_security_group_ids  = [aws_security_group.web.id]
+  subnet_id               = aws_subnet.public.id
 
-  scaling_config {
-    desired_size = 2
-    max_size     = 2
-    min_size     = 1
+  user_data = <<-EOF
+    #!/bin/bash
+    yum update -y
+    yum install -y docker
+    systemctl start docker
+    systemctl enable docker
+    usermod -a -G docker ec2-user
+  EOF
+
+  tags = {
+    Name = "${var.project_name}-frontend"
+    Role = "frontend"
   }
-
-  instance_types = ["t3.micro"]
-  capacity_type  = "ON_DEMAND"
-
-  remote_access {
-    ec2_ssh_key = var.ssh_key_name
-    source_security_group_ids = [aws_security_group.eks_node.id]
-  }
-
-  depends_on = [
-    aws_iam_role_policy_attachment.eks_worker_node_policy,
-    aws_iam_role_policy_attachment.eks_cni_policy,
-    aws_iam_role_policy_attachment.eks_container_registry_policy,
-  ]
 }

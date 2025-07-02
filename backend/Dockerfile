@@ -1,6 +1,8 @@
 # Backend Dockerfile
 FROM node:18-alpine
 
+LABEL org.opencontainers.image.source https://github.com/xalsie/devops
+
 WORKDIR /app
 
 COPY package*.json ./

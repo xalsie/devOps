@@ -6,6 +6,10 @@ import terser from '@rollup/plugin-terser';
 import css from 'rollup-plugin-css-only';
 import replace from '@rollup/plugin-replace';
 import { spawn } from 'child_process';
+import dotenv from 'dotenv';
+
+// Charger les variables d'environnement depuis .env
+dotenv.config();
 
 const production = !process.env.ROLLUP_WATCH;
 
@@ -41,6 +45,7 @@ export default {
 	plugins: [
 		replace({
 			'process.env.NODE_ENV': JSON.stringify(production ? 'production' : 'development'),
+			'import.meta.env.VITE_BACKEND_URL': JSON.stringify(process.env.VITE_BACKEND_URL),
 			preventAssignment: true
 		}),
 		svelte({

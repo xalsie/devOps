@@ -1,6 +1,8 @@
 # Frontend Dockerfile
 FROM node:18-alpine as builder
 
+LABEL org.opencontainers.image.source https://github.com/xalsie/devops
+
 WORKDIR /app
 
 COPY package*.json ./

@@ -8,9 +8,11 @@
 	let error = null;
 	let newUser = { name: '', email: '' };
 	
-	const API_URL = process.env.NODE_ENV === 'production' 
-		? 'http://YOUR_BACKEND_IP:3000/api' 
-		: 'http://localhost:3000/api';
+	// Configuration de l'URL de l'API
+	// En développement, utiliser localhost, en production utiliser la variable d'environnement
+	let API_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000';
+	// Ajouter /api à l'URL de base
+	API_URL = `${API_URL}/api`;
 	
 	onMount(() => {
 		fetchUsers();
@@ -77,7 +79,7 @@
 		</header>
 		
 		<section class="add-user">
-			<h2>Ajouter un utilisateur</h2>
+			<h2>Ajouter un utilisateur V3</h2>
 			<div class="form-group">
 				<input
 					bind:value={newUser.name}

@@ -1,0 +1,98 @@
+---
+- name: Deploy DevOps Stack with Docker
+  hosts: all
+  become: yes
+  gather_facts: yes
+  
+  tasks:
+    - name: Wait for instances to be ready
+      wait_for_connection:
+        timeout: 300
+
+    - name: Install Docker
+      yum:
+        name: docker
+        state: present
+
+    - name: Start and enable Docker
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Add ec2-user to docker group
+      user:
+        name: ec2-user
+        groups: docker
+        append: yes
+      
+    - name: Delete image frontend
+      command: docker rmi ghcr.io/xalsie/devops/frontend:latest --force
+      ignore_errors: yes
+
+    - name: Delete image backend
+      command: docker rmi ghcr.io/xalsie/devops/backend:latest --force
+      ignore_errors: yes
+
+- name: Deploy MongoDB
+  hosts: mongodb
+  become: yes
+  tasks:
+    - name: Create MongoDB container
+      docker_container:
+        name: mongodb
+        image: mongo:7
+        state: started
+        restart_policy: always
+        ports:
+          - "27017:27017"
+        env:
+          MONGO_INITDB_ROOT_USERNAME: admin
+          MONGO_INITDB_ROOT_PASSWORD: password
+        volumes:
+          - mongodb_data:/data/db
+
+- name: Deploy Backend
+  hosts: backend
+  become: yes
+  tasks:
+    - name: Log in to GitHub Container Registry
+      docker_login:
+        registry: ghcr.io
+        username: "{{ github_username }}"
+        password: "{{ github_token }}"
+
+    - name: Create Backend container
+      docker_container:
+        name: backend
+        image: ghcr.io/xalsie/devops/backend:latest
+        state: started
+        restart_policy: always
+        ports:
+          - "3000:3000"
+        env:
+          PORT: "3000"
+          USE_REAL_MONGODB: "true"
+          MONGODB_URI: "mongodb://admin:password@{{ mongodb_private_ip }}:27017/devops?authSource=admin"
+          FRONTEND_URL: "http://{{ frontend_public_ip }}"
+
+- name: Deploy Frontend
+  hosts: frontend
+  become: yes
+  tasks:
+    - name: Log in to GitHub Container Registry
+      docker_login:
+        registry: ghcr.io
+        username: "{{ github_username }}"
+        password: "{{ github_token }}"
+
+    - name: Create Frontend container
+      docker_container:
+        name: frontend
+        image: ghcr.io/xalsie/devops/frontend:latest
+        state: started
+        restart_policy: always
+        ports:
+          - "80:80"
+        env:
+          BACKEND_IP: "http://{{ backend_public_ip }}"

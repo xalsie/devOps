@@ -1,24 +1,59 @@
-output "cluster_endpoint" {
-  description = "EKS cluster endpoint"
-  value       = aws_eks_cluster.main.endpoint
-}
-
-output "cluster_name" {
-  description = "EKS cluster name"
-  value       = aws_eks_cluster.main.name
-}
-
-output "cluster_security_group_id" {
-  description = "Security group ID for EKS cluster"
-  value       = aws_security_group.eks_cluster.id
-}
-
 output "vpc_id" {
-  description = "VPC ID"
+  description = "ID of the VPC"
   value       = aws_vpc.main.id
 }
 
-output "kubectl_config" {
-  description = "Command to configure kubectl"
-  value       = "aws eks update-kubeconfig --region ${var.aws_region} --name ${aws_eks_cluster.main.name}"
+output "mongodb_public_ip" {
+  description = "Public IP of the MongoDB instance"
+  value       = aws_instance.mongodb.public_ip
+}
+
+output "backend_public_ip" {
+  description = "Public IP of the Backend instance"
+  value       = aws_instance.backend.public_ip
+}
+
+output "frontend_public_ip" {
+  description = "Public IP of the Frontend instance"
+  value       = aws_instance.frontend.public_ip
+}
+
+output "mongodb_private_ip" {
+  description = "Private IP of the MongoDB instance"
+  value       = aws_instance.mongodb.private_ip
+}
+
+output "backend_private_ip" {
+  description = "Private IP of the Backend instance"
+  value       = aws_instance.backend.private_ip
+}
+
+output "frontend_private_ip" {
+  description = "Private IP of the Frontend instance"
+  value       = aws_instance.frontend.private_ip
+}
+
+output "ssh_connection_mongodb" {
+  description = "SSH connection command for MongoDB instance"
+  value       = "ssh -i ~/.ssh/${var.ssh_key_name}.pem ec2-user@${aws_instance.mongodb.public_ip}"
+}
+
+output "ssh_connection_backend" {
+  description = "SSH connection command for Backend instance"
+  value       = "ssh -i ~/.ssh/${var.ssh_key_name}.pem ec2-user@${aws_instance.backend.public_ip}"
+}
+
+output "ssh_connection_frontend" {
+  description = "SSH connection command for Frontend instance"
+  value       = "ssh -i ~/.ssh/${var.ssh_key_name}.pem ec2-user@${aws_instance.frontend.public_ip}"
+}
+
+output "security_group_id" {
+  description = "ID of the security group"
+  value       = aws_security_group.web.id
+}
+
+output "backend_security_groups" {
+  description = "Security groups attached to backend instance"
+  value       = aws_instance.backend.vpc_security_group_ids
 }
