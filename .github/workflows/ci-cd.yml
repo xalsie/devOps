@@ -140,7 +140,7 @@ jobs:
       with:
         registry: ${{ env.REGISTRY }}
         username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
+        password: ${{ secrets.CR_PAT }}
         
     - name: Extract metadata for backend
       id: meta-backend
@@ -327,7 +327,7 @@ jobs:
       run: |
         cd ansible
         ansible-playbook -i inventory.ini deploy.yml \
-          --extra-vars "github_username=xalsie github_token=${{ secrets.GITHUB_TOKEN }}" \
+          --extra-vars "github_username=xalsie github_token=${{ secrets.CR_PAT }}" \
           --timeout=300 \
           -v
           
