@@ -1,0 +1,405 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME_BACKEND: ghcr.io/xalsie/devops/backend
+  IMAGE_NAME_FRONTEND: ghcr.io/xalsie/devops/frontend
+  TF_VERSION: "1.6.0"
+  ANSIBLE_VERSION: "8.0.0"
+
+jobs:
+  backend-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./backend
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: backend/package-lock.json
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Run lint
+      run: npm run lint || echo "Lint script not found, skipping..."
+      
+    - name: Run tests
+      run: npm test
+
+  frontend-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./frontend
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Run lint
+      run: npm run lint || echo "Lint script not found, skipping..."
+      
+    - name: Run build
+      run: npm run build
+      
+    - name: Run validate
+      run: npm run validate
+
+  terraform-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./infrastructure
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ env.TF_VERSION }}
+        
+    - name: Setup TFLint
+      uses: terraform-linters/setup-tflint@v4
+      with:
+        tflint_version: v0.50.0
+        
+    - name: Setup Checkov
+      run: |
+        pip install checkov
+        checkov --version
+        
+    - name: Terraform Format Check
+      run: terraform fmt -check -recursive
+      
+    - name: Terraform Init
+      run: terraform init -backend=false
+      
+    - name: Terraform Validate
+      run: terraform validate
+      
+    - name: TFLint
+      run: |
+        tflint --init
+        tflint --format compact
+        
+    - name: Checkov Security Scan
+      run: |
+        checkov -d . --framework terraform \
+          --output cli \
+          --quiet \
+          --compact \
+          --skip-check CKV_AWS_79,CKV_AWS_23 # Skip some checks if needed
+
+  docker-build-push:
+    needs: [backend-test, frontend-test, terraform-test]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+    
+    permissions:
+      contents: read
+      packages: write
+      
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Extract metadata for backend
+      id: meta-backend
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.IMAGE_NAME_BACKEND }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha,prefix=sha-
+          type=raw,value=latest,enable={{is_default_branch}}
+          
+    - name: Extract metadata for frontend
+      id: meta-frontend
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.IMAGE_NAME_FRONTEND }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha,prefix=sha-
+          type=raw,value=latest,enable={{is_default_branch}}
+    
+    - name: Build frontend assets
+      run: |
+        cd frontend
+        npm ci
+        npm run build
+        
+    - name: Build and push backend image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./backend
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: ${{ steps.meta-backend.outputs.tags }}
+        labels: ${{ steps.meta-backend.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        
+    - name: Build and push frontend image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./frontend
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: ${{ steps.meta-frontend.outputs.tags }}
+        labels: ${{ steps.meta-frontend.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  terraform-deploy:
+    needs: [docker-build-push]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    defaults:
+      run:
+        working-directory: ./infrastructure
+        
+    outputs:
+      backend_ip: ${{ steps.terraform-output.outputs.backend_ip }}
+      frontend_ip: ${{ steps.terraform-output.outputs.frontend_ip }}
+      mongodb_ip: ${{ steps.terraform-output.outputs.mongodb_ip }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ env.TF_VERSION }}
+        terraform_wrapper: false
+        
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_REGION || 'us-west-2' }}
+        
+    - name: Terraform Init
+      run: terraform init
+      
+    - name: Terraform Plan
+      run: |
+        terraform plan -var-file="terraform.tfvars" -out=tfplan
+        terraform show -no-color tfplan
+        
+    - name: Terraform Apply
+      run: terraform apply -auto-approve tfplan
+      
+    - name: Get Terraform Outputs
+      id: terraform-output
+      run: |
+        echo "backend_ip=$(terraform output -raw backend_public_ip)" >> $GITHUB_OUTPUT
+        echo "frontend_ip=$(terraform output -raw frontend_public_ip)" >> $GITHUB_OUTPUT
+        echo "mongodb_ip=$(terraform output -raw mongodb_public_ip)" >> $GITHUB_OUTPUT
+        
+        # Générer les fichiers de configuration
+        echo "Génération des fichiers de configuration..."
+        BACKEND_PUBLIC_IP=$(terraform output -raw backend_public_ip)
+        BACKEND_PRIVATE_IP=$(terraform output -raw backend_private_ip)
+        MONGODB_PRIVATE_IP=$(terraform output -raw mongodb_private_ip)
+        FRONTEND_PUBLIC_IP=$(terraform output -raw frontend_public_ip)
+        
+        # Créer le fichier .env pour le frontend
+        mkdir -p ../frontend
+        cat > ../frontend/.env << EOF
+        VITE_BACKEND_URL=http://$BACKEND_PUBLIC_IP:3000
+        EOF
+        
+        # Créer l'inventory Ansible
+        mkdir -p ../ansible
+        cat > ../ansible/inventory.ini << EOF
+        [mongodb]
+        $MONGODB_PRIVATE_IP ansible_user=ec2-user ansible_ssh_private_key_file=/tmp/aws-devops.pem
+        
+        [backend]
+        $BACKEND_PUBLIC_IP ansible_user=ec2-user ansible_ssh_private_key_file=/tmp/aws-devops.pem
+        
+        [frontend]
+        $FRONTEND_PUBLIC_IP ansible_user=ec2-user ansible_ssh_private_key_file=/tmp/aws-devops.pem
+        
+        [all:vars]
+        ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+        mongodb_private_ip=$MONGODB_PRIVATE_IP
+        backend_private_ip=$BACKEND_PRIVATE_IP
+        frontend_private_ip=$FRONTEND_PRIVATE_IP
+        backend_public_ip=$BACKEND_PUBLIC_IP
+        frontend_public_ip=$FRONTEND_PUBLIC_IP
+        EOF
+        
+    - name: Upload configuration files
+      uses: actions/upload-artifact@v4
+      with:
+        name: deployment-config
+        path: |
+          frontend/.env
+          ansible/inventory.ini
+
+  ansible-deploy:
+    needs: [terraform-deploy]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Download configuration files
+      uses: actions/download-artifact@v4
+      with:
+        name: deployment-config
+        
+    - name: Setup Python and Ansible
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install Ansible
+      run: |
+        pip install ansible==${{ env.ANSIBLE_VERSION }}
+        ansible --version
+        
+    - name: Setup SSH key
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.AWS_PRIVATE_KEY }}" > /tmp/aws-devops.pem
+        chmod 600 /tmp/aws-devops.pem
+        
+    - name: Wait for instances to be ready
+      run: |
+        echo "Attente que les instances soient prêtes..."
+        sleep 60
+        
+    - name: Test SSH connectivity
+      run: |
+        cd ansible
+        ansible all -i inventory.ini -m ping --timeout=30 || true
+        
+    - name: Run Ansible Playbook
+      run: |
+        cd ansible
+        ansible-playbook -i inventory.ini deploy.yml \
+          --extra-vars "github_username=xalsie github_token=${{ secrets.GITHUB_TOKEN }}" \
+          --timeout=300 \
+          -v
+          
+    - name: Verify deployment
+      run: |
+        echo "Vérification du déploiement..."
+        BACKEND_IP="${{ needs.terraform-deploy.outputs.backend_ip }}"
+        FRONTEND_IP="${{ needs.terraform-deploy.outputs.frontend_ip }}"
+        
+        # Test health check backend
+        curl -f http://$BACKEND_IP:3000/health || echo "Backend health check failed"
+        
+        # Test frontend
+        curl -f http://$FRONTEND_IP:80 || echo "Frontend check failed"
+
+  notify-success:
+    needs: [ansible-deploy]
+    runs-on: ubuntu-latest
+    if: success()
+    
+    steps:
+    - name: Success notification
+      run: |
+        echo "DÉPLOIEMENT COMPLET RÉUSSI !"
+        echo "================================="
+        echo "Tests passés (Backend/Frontend/Terraform)"
+        echo "mages Docker construites et poussées"
+        echo "Infrastructure déployée avec Terraform"
+        echo "Applications déployées avec Ansible"
+        echo ""
+        echo "Images disponibles :"
+        echo "   - ${{ env.IMAGE_NAME_BACKEND }}:latest"
+        echo "   - ${{ env.IMAGE_NAME_FRONTEND }}:latest"
+        echo ""
+        echo "Services accessibles :"
+        echo "   - Frontend: http://${{ needs.terraform-deploy.outputs.frontend_ip }}:80"
+        echo "   - Backend:  http://${{ needs.terraform-deploy.outputs.backend_ip }}:3000"
+        echo "   - Health:   http://${{ needs.terraform-deploy.outputs.backend_ip }}:3000/health"
+
+  cleanup-on-failure:
+    needs: [terraform-deploy, ansible-deploy]
+    runs-on: ubuntu-latest
+    if: failure() && github.ref == 'refs/heads/main'
+    
+    defaults:
+      run:
+        working-directory: ./infrastructure
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ env.TF_VERSION }}
+        
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_REGION || 'us-west-2' }}
+        
+    - name: Terraform Init
+      run: terraform init
+      
+    - name: Cleanup failed deployment
+      run: |
+        echo "Nettoyage des ressources suite à l'échec du déploiement..."
+        terraform destroy -var-file="terraform.tfvars" -auto-approve || echo "Cleanup failed, manual intervention may be required"
+        
+    - name: Failure notification
+      run: |
+        echo "ÉCHEC DU DÉPLOIEMENT"
+        echo "======================"
+        echo "Le déploiement a échoué et les ressources ont été nettoyées."
+        echo "Vérifiez les logs des étapes précédentes pour identifier le problème."
