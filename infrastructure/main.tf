@@ -98,7 +98,7 @@ resource "aws_security_group" "web" {
     from_port   = 27017
     to_port     = 27017
     protocol    = "tcp"
-    cidr_blocks = ["10.0.0.0/16"]  # Seulement depuis le VPC
+    cidr_blocks = ["10.0.0.0/16"] # Seulement depuis le VPC
   }
 
   egress {
@@ -131,11 +131,11 @@ data "aws_ami" "amazon_linux" {
 
 # Instance pour MongoDB
 resource "aws_instance" "mongodb" {
-  ami                     = data.aws_ami.amazon_linux.id
-  instance_type           = "t3.micro"
-  key_name                = var.ssh_key_name
-  vpc_security_group_ids  = [aws_security_group.web.id]
-  subnet_id               = aws_subnet.public.id
+  ami                    = data.aws_ami.amazon_linux.id
+  instance_type          = "t3.micro"
+  key_name               = var.ssh_key_name
+  vpc_security_group_ids = [aws_security_group.web.id]
+  subnet_id              = aws_subnet.public.id
 
   user_data = <<-EOF
     #!/bin/bash
@@ -154,11 +154,11 @@ resource "aws_instance" "mongodb" {
 
 # Instance pour Backend
 resource "aws_instance" "backend" {
-  ami                     = data.aws_ami.amazon_linux.id
-  instance_type           = "t3.micro"
-  key_name                = var.ssh_key_name
-  vpc_security_group_ids  = [aws_security_group.web.id]
-  subnet_id               = aws_subnet.public.id
+  ami                    = data.aws_ami.amazon_linux.id
+  instance_type          = "t3.micro"
+  key_name               = var.ssh_key_name
+  vpc_security_group_ids = [aws_security_group.web.id]
+  subnet_id              = aws_subnet.public.id
 
   user_data = <<-EOF
     #!/bin/bash
@@ -177,11 +177,11 @@ resource "aws_instance" "backend" {
 
 # Instance pour Frontend
 resource "aws_instance" "frontend" {
-  ami                     = data.aws_ami.amazon_linux.id
-  instance_type           = "t3.micro"
-  key_name                = var.ssh_key_name
-  vpc_security_group_ids  = [aws_security_group.web.id]
-  subnet_id               = aws_subnet.public.id
+  ami                    = data.aws_ami.amazon_linux.id
+  instance_type          = "t3.micro"
+  key_name               = var.ssh_key_name
+  vpc_security_group_ids = [aws_security_group.web.id]
+  subnet_id              = aws_subnet.public.id
 
   user_data = <<-EOF
     #!/bin/bash

@@ -1,0 +1,23 @@
+skip-check:
+  # Skip some checks that might not be relevant for development
+  # - CKV_AWS_79   # Ensure Instance Metadata Service Version 1 is not enabled
+  # - CKV_AWS_8    # Ensure all data stored in the Launch configuration EBS is securely encrypted at rest
+  # - CKV_AWS_23   # Ensure every security groups rule has a description
+
+skip-path:
+  - ".terraform/"
+  - "terraform.tfstate"
+  - "terraform.tfstate.backup"
+
+framework:
+  - terraform
+
+output:
+  - cli
+  - json
+
+quiet: false
+compact: true
+
+check:
+  - MEDIUM
