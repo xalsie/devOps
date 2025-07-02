@@ -231,8 +231,8 @@ jobs:
         terraform plan -var-file="terraform.tfvars" -out=tfplan
         terraform show -no-color tfplan
         
-    - name: Terraform Apply
-      run: terraform apply -auto-approve tfplan
+    # - name: Terraform Apply
+    #   run: terraform apply -auto-approve tfplan
       
     - name: Get Terraform Outputs
       id: terraform-output
