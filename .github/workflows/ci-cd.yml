@@ -119,8 +119,86 @@ jobs:
           --compact \
           --skip-check CKV_AWS_79,CKV_AWS_23 # Skip some checks if needed
 
-  # Génération des fichiers de configuration à partir des outputs Terraform
   generate-config:
+    needs: [backend-test, frontend-test, terraform-test]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Verify Terraform outputs exist
+      run: |
+        if [ ! -f "infrastructure/outputs.json" ]; then
+          echo "❌ Fichier infrastructure/outputs.json manquant"
+          echo "💡 Pour générer ce fichier, lancez d'abord:"
+          echo "   cd infrastructure && terraform apply && ./generate-outputs.sh"
+          exit 1
+        fi
+        echo "✅ Fichier outputs.json trouvé - génération des configurations"
+
+    - name: Generate configuration from Terraform outputs
+      run: |
+        echo "🔄 Génération des configurations depuis les outputs Terraform..."
+        
+        # Vérifier que jq est disponible
+        if ! command -v jq &> /dev/null; then
+          echo "❌ jq n'est pas installé"
+          exit 1
+        fi
+        
+        # Extraire les valeurs des outputs
+        BACKEND_PUBLIC_IP=$(jq -r '.backend_public_ip.value' infrastructure/outputs.json)
+        FRONTEND_PUBLIC_IP=$(jq -r '.frontend_public_ip.value' infrastructure/outputs.json)
+        MONGODB_PUBLIC_IP=$(jq -r '.mongodb_public_ip.value' infrastructure/outputs.json)
+        BACKEND_PRIVATE_IP=$(jq -r '.backend_private_ip.value' infrastructure/outputs.json)
+        FRONTEND_PRIVATE_IP=$(jq -r '.frontend_private_ip.value' infrastructure/outputs.json)
+        MONGODB_PRIVATE_IP=$(jq -r '.mongodb_private_ip.value' infrastructure/outputs.json)
+        
+        echo "📋 IPs extraites des outputs:"
+        echo "   Backend Public:  $BACKEND_PUBLIC_IP"
+        echo "   Frontend Public: $FRONTEND_PUBLIC_IP"
+        echo "   MongoDB Public:  $MONGODB_PUBLIC_IP"
+        
+        # Générer le fichier .env pour le frontend
+        cat > frontend/.env << EOF
+        # Configuration générée depuis les outputs Terraform réels
+        VITE_BACKEND_URL=http://$BACKEND_PUBLIC_IP:3000
+        EOF
+        
+        # Générer le fichier inventory.ini pour Ansible
+        cat > ansible/inventory.ini << EOF
+        [mongodb]
+        $MONGODB_PUBLIC_IP ansible_user=ec2-user ansible_ssh_private_key_file=~/.ssh/aws-devops.pem
+
+        [backend]
+        $BACKEND_PUBLIC_IP ansible_user=ec2-user ansible_ssh_private_key_file=~/.ssh/aws-devops.pem
+
+        [frontend]
+        $FRONTEND_PUBLIC_IP ansible_user=ec2-user ansible_ssh_private_key_file=~/.ssh/aws-devops.pem
+
+        [all:vars]
+        ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+        mongodb_private_ip=$MONGODB_PRIVATE_IP
+        backend_private_ip=$BACKEND_PRIVATE_IP
+        frontend_private_ip=$FRONTEND_PRIVATE_IP
+        backend_public_ip=$BACKEND_PUBLIC_IP
+        frontend_public_ip=$FRONTEND_PUBLIC_IP
+        EOF
+        
+        echo "✅ Configurations générées avec les vraies valeurs Terraform"
+
+    - name: Upload generated configs as artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: generated-configs
+        path: |
+          frontend/.env
+          ansible/inventory.ini
+        retention-days: 30
+
+  docker-build-push:
     needs: [backend-test, frontend-test, terraform-test]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
@@ -327,90 +405,21 @@ jobs:
         echo "📋 Plan vérifié - aucune infrastructure créée"
         echo "💡 Pour déployer, lancez manuellement: terraform apply"
 
-  # Simulation du déploiement pour les tests de pipeline
-  simulate-deployment:
+  # Validation de la configuration Ansible avec les vraies valeurs
+  ansible-validate:
     needs: [terraform-validate]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     
-    outputs:
-      backend_ip: ${{ steps.mock-outputs.outputs.backend_ip }}
-      frontend_ip: ${{ steps.mock-outputs.outputs.frontend_ip }}
-      mongodb_ip: ${{ steps.mock-outputs.outputs.mongodb_ip }}
-    
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
       
-    - name: Generate mock configuration files
-      id: mock-outputs
-      run: |
-        echo "🎭 Simulation du déploiement (pas de vraie infrastructure créée)"
-        
-        # Valeurs factices pour tester la pipeline
-        BACKEND_IP="1.2.3.4"
-        FRONTEND_IP="5.6.7.8" 
-        MONGODB_IP="9.10.11.12"
-        
-        echo "backend_ip=$BACKEND_IP" >> $GITHUB_OUTPUT
-        echo "frontend_ip=$FRONTEND_IP" >> $GITHUB_OUTPUT
-        echo "mongodb_ip=$MONGODB_IP" >> $GITHUB_OUTPUT
-        
-        echo "📝 Génération des fichiers de configuration de test..."
-        
-        # Créer le fichier .env pour le frontend
-        mkdir -p frontend
-        cat > frontend/.env << EOF
-        # Configuration de test - remplacer par les vraies IPs après déploiement manuel
-        VITE_BACKEND_URL=http://$BACKEND_IP:3000
-        EOF
-        
-        # Créer l'inventory Ansible de test
-        mkdir -p ansible
-        cat > ansible/inventory.ini << EOF
-        # Inventory de test - remplacer par les vraies IPs après déploiement manuel
-        [mongodb]
-        $MONGODB_IP ansible_user=ec2-user ansible_ssh_private_key_file=/tmp/aws-devops.pem
-        
-        [backend]
-        $BACKEND_IP ansible_user=ec2-user ansible_ssh_private_key_file=/tmp/aws-devops.pem
-        
-        [frontend] 
-        $FRONTEND_IP ansible_user=ec2-user ansible_ssh_private_key_file=/tmp/aws-devops.pem
-        
-        [all:vars]
-        ansible_ssh_common_args='-o StrictHostKeyChecking=no'
-        mongodb_private_ip=$MONGODB_IP
-        backend_private_ip=$BACKEND_IP
-        frontend_private_ip=$FRONTEND_IP
-        backend_public_ip=$BACKEND_IP
-        frontend_public_ip=$FRONTEND_IP
-        EOF
-        
-        echo "✅ Fichiers de configuration générés (avec IPs de test)"
-        
-    - name: Upload configuration files
-      uses: actions/upload-artifact@v4
-      with:
-        name: deployment-config
-        path: |
-          frontend/.env
-          ansible/inventory.ini
-
-  # Test de la configuration Ansible (sans vraie connexion)
-  ansible-validate:
-    needs: [simulate-deployment]
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Download configuration files
+    - name: Download generated configs from docker-build-push job
       uses: actions/download-artifact@v4
       with:
-        name: deployment-config
+        name: generated-configs
+        path: .
         
     - name: Setup Python and Ansible
       uses: actions/setup-python@v4
