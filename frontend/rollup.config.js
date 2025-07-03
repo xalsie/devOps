@@ -8,8 +8,7 @@ import replace from '@rollup/plugin-replace';
 import { spawn } from 'child_process';
 import dotenv from 'dotenv';
 
-// Charger les variables d'environnement depuis .env
-dotenv.config();
+dotenv.config({ path: '.env.production' });
 
 const production = !process.env.ROLLUP_WATCH;
 

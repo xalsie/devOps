@@ -173,13 +173,13 @@ jobs:
         mkdir -p ansible
         
         # Générer le fichier .env pour le frontend
-        cat > frontend/.env.local << EOF
-        # Configuration générée depuis les outputs Terraform réels
-        VITE_BACKEND_URL=http://$BACKEND_PUBLIC_IP:3000
-        EOF
+        cat > frontend/.env.production << EOF
+# Configuration générée depuis les outputs Terraform réels
+VITE_BACKEND_URL=http://$BACKEND_PUBLIC_IP:3000
+EOF
         
-        echo "✅ Fichier frontend/.env.local généré:"
-        cat frontend/.env.local
+        echo "✅ Fichier frontend/.env.production généré:"
+        cat frontend/.env.production
         
         # Générer le fichier inventory.ini pour Ansible
         cat > ansible/inventory.ini << EOF
@@ -206,7 +206,7 @@ jobs:
         
         # Vérifier que les fichiers sont bien créés
         echo "📋 Vérification des fichiers générés:"
-        ls -la frontend/.env.local ansible/inventory.ini
+        ls -la frontend/.env.production ansible/inventory.ini
         
         echo "✅ Configurations générées avec les vraies valeurs Terraform"
 
@@ -249,11 +249,11 @@ jobs:
     - name: Verify configurations
       run: |
         echo "📋 Vérification des fichiers de configuration..."
-        if [ -f "frontend/.env.local" ]; then
-          echo "✅ frontend/.env.local trouvé:"
-          cat frontend/.env.local
+        if [ -f "frontend/.env.production" ]; then
+          echo "✅ frontend/.env.production trouvé:"
+          cat frontend/.env.production
         else
-          echo "❌ frontend/.env.local manquant"
+          echo "❌ frontend/.env.production manquant"
         fi
         
         if [ -f "ansible/inventory.ini" ]; then
@@ -262,6 +262,26 @@ jobs:
         else
           echo "❌ ansible/inventory.ini manquant"
         fi
+      
+    - name: Build frontend assets with real backend URL
+      run: |
+        echo "🔧 Build du frontend avec la vraie URL du backend..."
+        cd frontend
+        
+        # Vérifier que le fichier .env.production existe
+        if [ -f ".env.production" ]; then
+          echo "✅ Fichier .env.production trouvé:"
+          cat .env.production
+        else
+          echo "❌ Fichier .env.production manquant - le build utilisera les valeurs par défaut"
+        fi
+        
+        # Installer les dépendances et builder
+        npm ci
+        echo "🚀 Lancement du build avec les variables d'environnement réelles..."
+        npm run build
+        
+        echo "✅ Build frontend terminé avec succès"
       
     - name: Setup Docker Buildx
       uses: docker/setup-buildx-action@v3
@@ -295,12 +315,6 @@ jobs:
           type=sha,prefix=sha-
           type=raw,value=latest,enable={{is_default_branch}}
     
-    - name: Build frontend assets
-      run: |
-        cd frontend
-        npm ci
-        npm run build
-        
     - name: Build and push backend image
       uses: docker/build-push-action@v5
       with:
