@@ -17,15 +17,10 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME_BACKEND: ghcr.io/xalsie/devops/backend
   IMAGE_NAME_FRONTEND: ghcr.io/xalsie/devops/frontend
-  TF_VERSION: "1.6.0"
-  ANSIBLE_VERSION: "8.0.0"
 
 jobs:
-  backend-test:
+  validate:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./backend
     
     steps:
     - name: Checkout code
@@ -38,190 +33,57 @@ jobs:
         cache: 'npm'
         cache-dependency-path: backend/package-lock.json
         
-    - name: Install dependencies
-      run: npm ci
-      
-    - name: Run lint
-      run: npm run lint || echo "Lint script not found, skipping..."
-      
-    - name: Run tests
-      run: npm test
-
-  frontend-test:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./frontend
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '18'
-        cache: 'npm'
-        cache-dependency-path: frontend/package-lock.json
+    - name: Test Backend
+      working-directory: ./backend
+      run: |
+        npm ci
+        npm run lint || echo "No lint script"
+        npm test
         
-    - name: Install dependencies
-      run: npm ci
-      
-    - name: Run lint
-      run: npm run lint || echo "Lint script not found, skipping..."
-      
-    - name: Run build
-      run: npm run build
-      
-    - name: Run validate
-      run: npm run validate
-
-  terraform-test:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./infrastructure
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
+    - name: Test Frontend
+      working-directory: ./frontend
+      run: |
+        npm ci
+        npm run lint || echo "No lint script"
+        npm run build
+        npm run validate
+        
+    # Terraform validation
     - name: Setup Terraform
       uses: hashicorp/setup-terraform@v3
       with:
-        terraform_version: ${{ env.TF_VERSION }}
+        terraform_version: "1.6.0"
         
-    - name: Setup TFLint
-      uses: terraform-linters/setup-tflint@v4
-      with:
-        tflint_version: v0.50.0
-        
-    - name: Setup Checkov
+    - name: Setup Security Tools
       run: |
         pip install checkov
-        checkov --version
+        curl -s https://raw.githubusercontent.com/terraform-linters/tflint/master/install_linux.sh | bash
         
-    - name: Terraform Format
-      run: terraform fmt -recursive
-
-    - name: Terraform Format Check
-      run: terraform fmt -check -recursive
-      
-    - name: Terraform Init
-      run: terraform init -backend=false
-      
-    - name: Terraform Validate
-      run: terraform validate
-      
-    - name: TFLint
+    - name: Validate Terraform
+      working-directory: ./infrastructure
       run: |
-        tflint --init
-        tflint --format compact
+        terraform fmt -check -recursive
+        terraform init -backend=false
+        terraform validate
         
-    - name: Checkov Security Scan
-      run: |
-        checkov -d . --framework terraform \
-          --output cli \
-          --quiet \
-          --compact \
-          --skip-check CKV_AWS_79,CKV_AWS_23 # Skip some checks if needed
+        # Valider aussi les modules individuellement
+        for module in modules/*/; do
+          if [ -d "$module" ]; then
+            echo "🔍 Validation du module: $module"
+            cd "$module"
+            terraform fmt -check -recursive
+            terraform init -backend=false
+            terraform validate
+            cd ../..
+          fi
+        done
+        
+        # Tools de sécurité
+        tflint --init && tflint --format compact
+        checkov -d . --framework terraform --quiet --compact
 
-  generate-config:
-    needs: [backend-test, frontend-test, terraform-test]
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Verify Terraform outputs exist
-      run: |
-        if [ ! -f "infrastructure/outputs.json" ]; then
-          echo "❌ Fichier infrastructure/outputs.json manquant"
-          echo "💡 Pour générer ce fichier, lancez d'abord:"
-          echo "   cd infrastructure && terraform apply && ./generate-outputs.sh"
-          exit 1
-        fi
-        echo "✅ Fichier outputs.json trouvé - génération des configurations"
-
-    - name: Generate configuration from Terraform outputs
-      run: |
-        echo "🔄 Génération des configurations depuis les outputs Terraform..."
-        
-        # Vérifier que jq est disponible
-        if ! command -v jq &> /dev/null; then
-          echo "❌ jq n'est pas installé"
-          exit 1
-        fi
-        
-        # Extraire les valeurs des outputs
-        BACKEND_PUBLIC_IP=$(jq -r '.backend_public_ip.value' infrastructure/outputs.json)
-        FRONTEND_PUBLIC_IP=$(jq -r '.frontend_public_ip.value' infrastructure/outputs.json)
-        MONGODB_PUBLIC_IP=$(jq -r '.mongodb_public_ip.value' infrastructure/outputs.json)
-        BACKEND_PRIVATE_IP=$(jq -r '.backend_private_ip.value' infrastructure/outputs.json)
-        FRONTEND_PRIVATE_IP=$(jq -r '.frontend_private_ip.value' infrastructure/outputs.json)
-        MONGODB_PRIVATE_IP=$(jq -r '.mongodb_private_ip.value' infrastructure/outputs.json)
-        
-        echo "📋 IPs extraites des outputs:"
-        echo "   Backend Public:  $BACKEND_PUBLIC_IP"
-        echo "   Frontend Public: $FRONTEND_PUBLIC_IP"
-        echo "   MongoDB Public:  $MONGODB_PUBLIC_IP"
-        
-        # Créer les répertoires si ils n'existent pas
-        mkdir -p frontend
-        mkdir -p ansible
-        
-        # Générer le fichier .env pour le frontend
-        cat > frontend/.env.production << EOF
-        # Configuration générée depuis les outputs Terraform réels
-        VITE_BACKEND_URL=http://$BACKEND_PUBLIC_IP:3000
-        EOF
-
-        echo "✅ Fichier frontend/.env.production généré:"
-        cat frontend/.env.production
-        
-        # Générer le fichier inventory.ini pour Ansible
-        cat > ansible/inventory.ini << EOF
-        [mongodb]
-        $MONGODB_PUBLIC_IP ansible_user=ec2-user ansible_ssh_private_key_file=~/.ssh/aws-devops.pem
-
-        [backend]
-        $BACKEND_PUBLIC_IP ansible_user=ec2-user ansible_ssh_private_key_file=~/.ssh/aws-devops.pem
-
-        [frontend]
-        $FRONTEND_PUBLIC_IP ansible_user=ec2-user ansible_ssh_private_key_file=~/.ssh/aws-devops.pem
-
-        [all:vars]
-        ansible_ssh_common_args='-o StrictHostKeyChecking=no'
-        mongodb_private_ip=$MONGODB_PRIVATE_IP
-        backend_private_ip=$BACKEND_PRIVATE_IP
-        frontend_private_ip=$FRONTEND_PRIVATE_IP
-        backend_public_ip=$BACKEND_PUBLIC_IP
-        frontend_public_ip=$FRONTEND_PUBLIC_IP
-        EOF
-        
-        echo "✅ Fichier ansible/inventory.ini généré:"
-        head -10 ansible/inventory.ini
-        
-        # Vérifier que les fichiers sont bien créés
-        echo "📋 Vérification des fichiers générés:"
-        ls -la frontend/.env.production ansible/inventory.ini
-        
-        echo "✅ Configurations générées avec les vraies valeurs Terraform"
-
-    - name: Upload generated configs as artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: generated-configs
-        path: |
-          frontend/
-          ansible/
-          infrastructure/outputs.json
-        retention-days: 30
-
-  docker-build-push:
-    needs: [generate-config]
+  build-and-deploy:
+    needs: [validate]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     
@@ -233,96 +95,46 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       
-    - name: Download generated configs
-      uses: actions/download-artifact@v4
-      with:
-        name: generated-configs
-        path: .
-        
-    - name: Extract backend IP for Docker build
+    - name: Generate configs and extract backend IP
       run: |
-        echo "🔍 Extraction de l'IP du backend depuis outputs.json..."
-        if [ -f "infrastructure/outputs.json" ]; then
-          BACKEND_IP=$(jq -r '.backend_public_ip.value' infrastructure/outputs.json)
-          echo "📋 Backend IP: $BACKEND_IP"
-          echo "BACKEND_PUBLIC_IP=$BACKEND_IP" >> $GITHUB_ENV
-          echo "✅ IP du backend définie comme variable d'environnement"
-        else
-          echo "❌ Fichier outputs.json non trouvé"
+        # Vérifier outputs.json
+        if [ ! -f "infrastructure/outputs.json" ]; then
+          echo "❌ outputs.json manquant - utilisation de localhost"
           echo "BACKEND_PUBLIC_IP=localhost" >> $GITHUB_ENV
+          exit 0
         fi
         
-        # Debug: Afficher la valeur définie
-        echo "🔧 Variable d'environnement BACKEND_PUBLIC_IP définie: $BACKEND_PUBLIC_IP"
+        # Extraire IPs et générer configs
+        BACKEND_IP=$(jq -r '.backend_public_ip.value' infrastructure/outputs.json)
+        FRONTEND_IP=$(jq -r '.frontend_public_ip.value' infrastructure/outputs.json)
+        MONGODB_IP=$(jq -r '.mongodb_public_ip.value' infrastructure/outputs.json)
+        BACKEND_PRIVATE_IP=$(jq -r '.backend_private_ip.value' infrastructure/outputs.json)
+        FRONTEND_PRIVATE_IP=$(jq -r '.frontend_private_ip.value' infrastructure/outputs.json)
+        MONGODB_PRIVATE_IP=$(jq -r '.mongodb_private_ip.value' infrastructure/outputs.json)
         
-    - name: Debug artifact contents
-      run: |
-        echo "📋 Contenu téléchargé depuis l'artifact:"
-        find . -name "*.env" -o -name "inventory.ini" | head -10
-        echo ""
-        echo "📂 Structure actuelle:"
-        ls -la frontend/ ansible/ || echo "Répertoires manquants"
+        echo "BACKEND_PUBLIC_IP=$BACKEND_IP" >> $GITHUB_ENV
+        
+        # Générer inventory Ansible
+        mkdir -p ansible
+        cat > ansible/inventory.ini <<EOF
+        [mongodb]
+        $MONGODB_IP ansible_user=ec2-user ansible_ssh_private_key_file=~/.ssh/aws-devops.pem
 
-    - name: Verify configurations
-      run: |
-        echo "📋 Vérification des fichiers de configuration..."
-        if [ -f "frontend/.env.production" ]; then
-          echo "✅ frontend/.env.production trouvé:"
-          cat frontend/.env.production
-        else
-          echo "❌ frontend/.env.production manquant"
-        fi
-        
-        if [ -f "ansible/inventory.ini" ]; then
-          echo "✅ ansible/inventory.ini trouvé:"
-          head -10 ansible/inventory.ini
-        else
-          echo "❌ ansible/inventory.ini manquant"
-        fi
-      
-    - name: Build frontend assets with real backend URL
-      run: |
-        echo "🔧 Build du frontend avec la vraie URL du backend..."
-        cd frontend
-        
-        # Vérifier que le fichier .env.production existe
-        if [ -f ".env.production" ]; then
-          echo "✅ Fichier .env.production trouvé:"
-          cat .env.production
-        else
-          echo "❌ Fichier .env.production manquant - le build utilisera les valeurs par défaut"
-        fi
-        
-        # Installer les dépendances et builder
-        npm ci
-        echo "🚀 Lancement du build avec les variables d'environnement réelles..."
-        npm run build
-        
-        echo "✅ Build frontend terminé avec succès"
-      
-    - name: Prepare frontend for Docker build
-      run: |
-        echo "📋 Préparation du contexte Docker pour le frontend..."
-        
-        # Copier le fichier .env.production généré vers le répertoire frontend
-        if [ -f "frontend/.env.production" ]; then
-          echo "✅ Le fichier .env.production est déjà présent dans frontend/"
-          echo "Contenu du fichier:"
-          cat frontend/.env.production
-        else
-          echo "❌ Fichier .env.production manquant dans frontend/"
-          ls -la frontend/
-        fi
-        
-        echo "📁 Contenu du répertoire frontend avant build Docker:"
-        ls -la frontend/ | head -10
-      
-    - name: Debug Docker build-args
-      run: |
-        echo "🔧 Variables pour le build Docker:"
-        echo "BACKEND_PUBLIC_IP: ${{ env.BACKEND_PUBLIC_IP }}"
-        echo "URL finale: http://${{ env.BACKEND_PUBLIC_IP }}:3000"
-      
+        [backend]
+        $BACKEND_IP ansible_user=ec2-user ansible_ssh_private_key_file=~/.ssh/aws-devops.pem
+
+        [frontend]
+        $FRONTEND_IP ansible_user=ec2-user ansible_ssh_private_key_file=~/.ssh/aws-devops.pem
+
+        [all:vars]
+        ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+        mongodb_private_ip=$MONGODB_PRIVATE_IP
+        backend_private_ip=$BACKEND_PRIVATE_IP
+        frontend_private_ip=$FRONTEND_PRIVATE_IP
+        backend_public_ip=$BACKEND_IP
+        frontend_public_ip=$FRONTEND_IP
+        EOF
+
     - name: Setup Docker Buildx
       uses: docker/setup-buildx-action@v3
       
@@ -333,107 +145,47 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.CR_PAT }}
         
-    - name: Extract metadata for backend
-      id: meta-backend
-      uses: docker/metadata-action@v5
-      with:
-        images: ${{ env.IMAGE_NAME_BACKEND }}
-        tags: |
-          type=ref,event=branch
-          type=ref,event=pr
-          type=sha,prefix=sha-
-          type=raw,value=latest,enable={{is_default_branch}}
-          
-    - name: Extract metadata for frontend
-      id: meta-frontend
-      uses: docker/metadata-action@v5
-      with:
-        images: ${{ env.IMAGE_NAME_FRONTEND }}
-        tags: |
-          type=ref,event=branch
-          type=ref,event=pr
-          type=sha,prefix=sha-
-          type=raw,value=latest,enable={{is_default_branch}}
-    
-    - name: Build and push backend image
-      uses: docker/build-push-action@v5
-      with:
-        context: ./backend
-        platforms: linux/amd64,linux/arm64
-        push: true
-        tags: ${{ steps.meta-backend.outputs.tags }}
-        labels: ${{ steps.meta-backend.outputs.labels }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
-        
-    - name: Build and push frontend image
-      uses: docker/build-push-action@v5
-      with:
-        context: ./frontend
-        platforms: linux/amd64,linux/arm64
-        push: true
-        tags: ${{ steps.meta-frontend.outputs.tags }}
-        labels: ${{ steps.meta-frontend.outputs.labels }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
-        build-args: |
-          VITE_BACKEND_URL=http://${{ env.BACKEND_PUBLIC_IP }}:3000
+    - name: Build and push images
+      run: |
+        # Extract metadata and build backend
+        # tag correspond of name in branche
+        docker build -t ${{ env.IMAGE_NAME_BACKEND }}:${ github.ref_name } \
+                    -t ${{ env.IMAGE_NAME_BACKEND }}:${{ github.sha }} \
+                    ./backend
+        docker push ${{ env.IMAGE_NAME_BACKEND }}:${{ github.ref_name }}
+        docker push ${{ env.IMAGE_NAME_BACKEND }}:${{ github.sha }}
 
-  # Validation de l'infrastructure (sans déploiement)
-  terraform-validate:
-    needs: [docker-build-push]
+        # Build and push frontend with real backend IP
+        docker build -t ${{ env.IMAGE_NAME_FRONTEND }}:${{ github.ref_name }} \
+                    -t ${{ env.IMAGE_NAME_FRONTEND }}:${{ github.sha }} \
+                    --build-arg VITE_BACKEND_URL=http://${{ env.BACKEND_PUBLIC_IP }}:3000 \
+                    ./frontend
+        docker push ${{ env.IMAGE_NAME_FRONTEND }}:${{ github.ref_name }}
+        docker push ${{ env.IMAGE_NAME_FRONTEND }}:${{ github.sha }}
+
+    - name: Upload configs as artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: deployment-configs
+        path: |
+          ansible/inventory.ini
+          infrastructure/outputs.json
+
+  deploy:
+    needs: [build-and-deploy]
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    
-    defaults:
-      run:
-        working-directory: ./infrastructure
+    if: |
+      (github.ref == 'refs/heads/main' && github.event.inputs.deploy_ansible == 'true') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_ansible == 'true')
     
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
       
-    - name: Setup Terraform
-      uses: hashicorp/setup-terraform@v3
-      with:
-        terraform_version: ${{ env.TF_VERSION }}
-        terraform_wrapper: false
-        
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ secrets.AWS_REGION || 'eu-west-3' }}
-        
-    - name: Terraform Init
-      run: terraform init
-      
-    - name: Terraform Plan
-      run: |
-        terraform plan -var-file="terraform.tfvars" -out=tfplan
-        terraform show -no-color tfplan
-
-    - name: Validation Complete
-      run: |
-        echo "✅ Validation Terraform terminée avec succès"
-        echo "📋 Plan vérifié - aucune infrastructure créée"
-        echo "💡 Pour déployer, lancez manuellement: terraform apply"
-
-  # Validation de la configuration Ansible avec les vraies valeurs
-  ansible-validate:
-    needs: [terraform-validate]
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Download generated configs from docker-build-push job
+    - name: Download deployment configs
       uses: actions/download-artifact@v4
       with:
-        name: generated-configs
+        name: deployment-configs
         path: .
         
     - name: Setup Python and Ansible
@@ -441,183 +193,59 @@ jobs:
       with:
         python-version: '3.11'
         
-    - name: Install Ansible
+    - name: Install Ansible and setup SSH
       run: |
-        pip install ansible==${{ env.ANSIBLE_VERSION }}
-        ansible --version
-        
-    - name: Validate Ansible Playbook
-      run: |
-        cd ansible
-        echo "🔍 Validation du playbook Ansible..."
-        
-        # Vérifier la syntaxe du playbook
-        if [ -f "deploy.yml" ]; then
-          ansible-playbook --syntax-check deploy.yml
-          echo "✅ Syntaxe du playbook valide"
-        else
-          echo "❌ Fichier deploy.yml non trouvé"
-          exit 1
-        fi
-        
-        # Vérifier que l'inventory est bien formé
-        if [ -f "inventory.ini" ]; then
-          echo "📋 Contenu de l'inventory généré:"
-          cat inventory.ini
-          echo "✅ Inventory généré avec succès"
-        else
-          echo "❌ Fichier inventory.ini non trouvé"
-          exit 1
-        fi
-        
-    - name: Ansible validation complete
-      run: |
-        echo "✅ Validation Ansible terminée"
-        echo "📝 Playbook prêt pour le déploiement manuel"
-        echo "💡 Pour déployer automatiquement, lancez le workflow 'Deploy Ansible'"
-
-  # Déploiement Ansible avec les vraies valeurs (manuel uniquement)
-  ansible-deploy:
-    needs: [ansible-validate]
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Download generated configs
-      uses: actions/download-artifact@v4
-      with:
-        name: generated-configs
-        path: .
-        
-    - name: Setup Python and Ansible
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
-        
-    - name: Install Ansible
-      run: |
-        pip install ansible==${{ env.ANSIBLE_VERSION }}
-        ansible --version
-        
-    - name: Setup SSH key
-      run: |
+        pip install ansible==8.0.0
         mkdir -p ~/.ssh
         echo "${{ secrets.AWS_SSH_PRIVATE_KEY }}" > ~/.ssh/aws-devops.pem
         chmod 600 ~/.ssh/aws-devops.pem
-        ssh-keyscan -H $(jq -r '.backend_public_ip.value' infrastructure/outputs.json) >> ~/.ssh/known_hosts || true
-        ssh-keyscan -H $(jq -r '.frontend_public_ip.value' infrastructure/outputs.json) >> ~/.ssh/known_hosts || true
-        ssh-keyscan -H $(jq -r '.mongodb_public_ip.value' infrastructure/outputs.json) >> ~/.ssh/known_hosts || true
         
-    - name: Verify infrastructure connectivity
+    - name: Validate Ansible configuration
+      working-directory: ./ansible
       run: |
-        echo "🔍 Vérification de la connectivité aux serveurs..."
+        # Syntax check
+        ansible-playbook --syntax-check deploy.yml
         
-        BACKEND_IP=$(jq -r '.backend_public_ip.value' infrastructure/outputs.json)
-        FRONTEND_IP=$(jq -r '.frontend_public_ip.value' infrastructure/outputs.json)
-        MONGODB_IP=$(jq -r '.mongodb_public_ip.value' infrastructure/outputs.json)
-        
-        echo "📋 Test de connectivité SSH:"
-        for ip in $BACKEND_IP $FRONTEND_IP $MONGODB_IP; do
-          echo "Testing $ip..."
-          ssh -i ~/.ssh/aws-devops.pem -o ConnectTimeout=10 -o StrictHostKeyChecking=no ec2-user@$ip "echo 'Connectivité OK sur $ip'" || echo "❌ Échec connexion à $ip"
-        done
-        
-    - name: Deploy with Ansible
-      run: |
-        cd ansible
-        echo "🚀 Déploiement Ansible en cours..."
-        
-        # Vérifier que l'inventory est disponible
-        if [ ! -f "inventory.ini" ]; then
-          echo "❌ Fichier inventory.ini manquant"
+        # Verify inventory
+        if [ -f "inventory.ini" ]; then
+          echo "✅ Inventory généré:"
+          cat inventory.ini
+        else
+          echo "❌ inventory.ini manquant"
           exit 1
         fi
         
-        echo "📋 Inventory utilisé:"
-        cat inventory.ini
-        echo ""
-        
-        # Lancer le déploiement
+    - name: Deploy with Ansible
+      working-directory: ./ansible
+      run: |
         ansible-playbook -i inventory.ini deploy.yml \
           --extra-vars "github_username=${{ github.repository_owner }}" \
           --extra-vars "github_token=${{ secrets.CR_PAT }}" \
           -v
 
-    - name: Deployment status
-      run: |
-        echo "✅ Déploiement Ansible terminé avec succès!"
-        echo ""
-        echo "🌐 URLs d'accès:"
-        BACKEND_IP=$(jq -r '.backend_public_ip.value' infrastructure/outputs.json)
-        FRONTEND_IP=$(jq -r '.frontend_public_ip.value' infrastructure/outputs.json)
-        echo "   Backend:  http://$BACKEND_IP:3000"
-        echo "   Frontend: http://$FRONTEND_IP"
-        echo ""
-        echo "🔧 Connexions SSH:"
-        echo "   Backend:  ssh -i ~/.ssh/aws-devops.pem ec2-user@$BACKEND_IP"
-        echo "   Frontend: ssh -i ~/.ssh/aws-devops.pem ec2-user@$FRONTEND_IP"
-
-  notify-success:
-    needs: [ansible-deploy]
+  notify:
+    needs: [build-and-deploy, deploy]
     runs-on: ubuntu-latest
-    if: success() && github.event_name != 'workflow_dispatch'
+    if: always()
     
     steps:
     - name: Success notification
+      if: needs.build-and-deploy.result == 'success'
       run: |
-        echo "🎉 VALIDATION CI/CD RÉUSSIE !"
-        echo "================================="
-        echo "✅ Tests passés (Backend/Frontend/Terraform)"
-        echo "✅ Images Docker construites et poussées"
-        echo "✅ Infrastructure Terraform validée"
-        echo "✅ Playbook Ansible validé"
-        echo ""
-        echo "📦 Images disponibles :"
+        echo "🎉 CI/CD Pipeline terminée avec succès!"
+        echo "✅ Validation: Backend, Frontend, Terraform"
+        echo "✅ Images Docker buildées et poussées"
+        echo "📦 Images disponibles:"
         echo "   - ${{ env.IMAGE_NAME_BACKEND }}:latest"
         echo "   - ${{ env.IMAGE_NAME_FRONTEND }}:latest"
-        echo ""
-        echo "🚀 DÉPLOIEMENT DISPONIBLE :"
-        echo "================================="
-        echo "1. Automatique : Lancez le workflow 'Run workflow' avec l'option 'Déployer avec Ansible'"
-        echo "2. Manuel : "
-        echo "   cd ansible && ansible-playbook -i inventory.ini deploy.yml"
-
-  notify-deploy-success:
-    needs: [ansible-deploy]
-    runs-on: ubuntu-latest
-    if: success() && github.event_name == 'workflow_dispatch' && inputs.deploy_ansible == 'true'
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
+        
     - name: Deploy success notification
+      if: needs.deploy.result == 'success'
       run: |
-        echo "🎉 DÉPLOIEMENT ANSIBLE RÉUSSI !"
-        echo "================================="
+        echo "🚀 Déploiement Ansible réussi!"
+        echo "🌐 Application accessible sur les IPs configurées"
         
-        # Récupérer les outputs
-        BACKEND_IP=$(jq -r '.backend_public_ip.value' infrastructure/outputs.json)
-        FRONTEND_IP=$(jq -r '.frontend_public_ip.value' infrastructure/outputs.json)
-        
-        echo "🌐 Application déployée et accessible :"
-        echo "   Backend:  http://$BACKEND_IP:3000"
-        echo "   Frontend: http://$FRONTEND_IP"
-        echo ""
-        echo "✅ Infrastructure complètement déployée et configurée"
-
-  cleanup-on-failure:
-    needs: [terraform-validate, ansible-validate]
-    runs-on: ubuntu-latest
-    if: failure() && github.ref == 'refs/heads/main'
-    
-    steps:
     - name: Failure notification
+      if: needs.build-and-deploy.result == 'failure' || needs.deploy.result == 'failure'
       run: |
-        echo "❌ ÉCHEC DE LA VALIDATION CI/CD"
-        echo "======================"
-        echo "La validation a échoué. Vérifiez les logs des étapes précédentes."
-        echo "Aucune infrastructure n'a été créée - pas de nettoyage nécessaire."
+        echo "❌ Pipeline échouée - vérifiez les logs"
