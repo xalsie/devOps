@@ -60,98 +60,48 @@ jobs:
         # Créer le répertoire de rapport
         mkdir -p ../reports
         
-        # Génération du rapport avec timestamp
+        # Variables
         TIMESTAMP=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
         REPORT_FILE="../reports/terraform-validation-report.md"
         
-        cat > $REPORT_FILE << EOF
-# Rapport de Validation Terraform
-        
-**Date de génération :** $TIMESTAMP  
-**Workflow :** Test Terraform Outputs  
-**Branche :** ${{ github.ref_name }}  
-**Commit :** ${{ github.sha }}  
-**Déclenché par :** ${{ github.actor }}
-        
-## ✅ Statut de Validation
-        
-- [x] Terraform Init
-- [x] Terraform Validate  
-- [x] Terraform Plan
-- [x] Outputs définis
-        
-## 📋 Outputs Terraform Disponibles
-        
-Les outputs suivants seront disponibles après \`terraform apply\`:
-        
-EOF
-        
-        # Ajouter les détails des outputs depuis outputs.tf
-        echo "### Outputs définis dans outputs.tf:" >> $REPORT_FILE
+        # Créer le rapport simple
+        echo "# Rapport de Validation Terraform" > $REPORT_FILE
+        echo "" >> $REPORT_FILE
+        echo "**Date:** $TIMESTAMP" >> $REPORT_FILE
+        echo "**Branche:** ${{ github.ref_name }}" >> $REPORT_FILE
+        echo "**Commit:** ${{ github.sha }}" >> $REPORT_FILE
+        echo "**Utilisateur:** ${{ github.actor }}" >> $REPORT_FILE
         echo "" >> $REPORT_FILE
         
+        # Statut
+        echo "## Statut de Validation" >> $REPORT_FILE
+        echo "" >> $REPORT_FILE
+        echo "- [x] Terraform Init OK" >> $REPORT_FILE
+        echo "- [x] Terraform Validate OK" >> $REPORT_FILE
+        echo "- [x] Terraform Plan OK" >> $REPORT_FILE
+        echo "- [x] Outputs définis OK" >> $REPORT_FILE
+        echo "" >> $REPORT_FILE
+        
+        # Outputs disponibles
+        echo "## Outputs Terraform" >> $REPORT_FILE
+        echo "" >> $REPORT_FILE
         if [ -f "outputs.tf" ]; then
-          while IFS= read -r line; do
-            if [[ $line =~ ^output ]]; then
-              # Extraire le nom de l'output
-              output_name=$(echo "$line" | sed 's/output "\([^"]*\)".*/\1/')
-              echo "- **$output_name**" >> $REPORT_FILE
-              
-              # Chercher la description si elle existe
-              description=$(awk "/^output \"$output_name\"/,/^}/" outputs.tf | grep -E "description\s*=" | sed 's/.*description\s*=\s*"\([^"]*\)".*/\1/')
-              if [ -n "$description" ]; then
-                echo "  - Description: $description" >> $REPORT_FILE
-              fi
-              echo "" >> $REPORT_FILE
-            fi
-          done < outputs.tf
+          grep -E "^output" outputs.tf | sed 's/output "\([^"]*\)".*/- \1/' >> $REPORT_FILE
         fi
-        
-        # Ajouter le plan Terraform au rapport
-        echo "## 📝 Plan Terraform (Aperçu)" >> $REPORT_FILE
-        echo "" >> $REPORT_FILE
-        echo "\`\`\`" >> $REPORT_FILE
-        terraform plan -var-file="terraform.tfvars" -no-color | head -50 >> $REPORT_FILE
-        echo "..." >> $REPORT_FILE
-        echo "\`\`\`" >> $REPORT_FILE
         echo "" >> $REPORT_FILE
         
-        # Ajouter les instructions de déploiement
-        cat >> $REPORT_FILE << EOF
-## 🚀 Instructions de Déploiement Manuel
+        # Instructions
+        echo "## Instructions de déploiement" >> $REPORT_FILE
+        echo "" >> $REPORT_FILE
+        echo "1. Déployer: \`./deploy-manual.sh deploy\`" >> $REPORT_FILE
+        echo "2. Vérifier: \`./deploy-manual.sh status\`" >> $REPORT_FILE
+        echo "3. Détruire: \`./deploy-manual.sh destroy\`" >> $REPORT_FILE
+        echo "" >> $REPORT_FILE
+        echo "---" >> $REPORT_FILE
+        echo "*Rapport généré automatiquement*" >> $REPORT_FILE
         
-### 1. Déployer l'infrastructure
-\`\`\`bash
-cd infrastructure
-terraform apply -var-file="terraform.tfvars"
-\`\`\`
-        
-### 2. Récupérer les outputs
-\`\`\`bash
-terraform output
-\`\`\`
-        
-### 3. Utiliser le script automatisé
-\`\`\`bash
-./deploy-manual.sh deploy
-\`\`\`
-        
-## 📊 Ressources à créer
-        
-D'après le plan Terraform, les ressources suivantes seront créées :
-- VPC avec subnets publics
-- 3 instances EC2 (MongoDB, Backend, Frontend)
-- Security Groups
-- Internet Gateway et Route Tables
-        
-**Coût estimé :** ~15-30€/mois (dépend de la région et l'utilisation)
-        
----
-*Rapport généré automatiquement par GitHub Actions*
-EOF
-        
-        echo "✅ Rapport généré: $REPORT_FILE"
-        echo "📄 Contenu du rapport:"
+        echo "✅ Rapport généré avec succès"
+        echo "📄 Aperçu du rapport:"
         cat $REPORT_FILE
         
     - name: Upload Terraform Report
