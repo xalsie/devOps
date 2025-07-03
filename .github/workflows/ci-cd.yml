@@ -487,9 +487,9 @@ jobs:
         # Lancer le déploiement
         ansible-playbook -i inventory.ini deploy.yml \
           --extra-vars "github_username=${{ github.repository_owner }}" \
-          --extra-vars "github_token=${{ secrets.GITHUB_TOKEN }}" \
+          --extra-vars "github_token=${{ secrets.CR_PAT }}" \
           -v
-          
+
     - name: Deployment status
       run: |
         echo "✅ Déploiement Ansible terminé avec succès!"
@@ -505,7 +505,7 @@ jobs:
         echo "   Frontend: ssh -i ~/.ssh/aws-devops.pem ec2-user@$FRONTEND_IP"
 
   notify-success:
-    needs: [ansible-validate]
+    needs: [ansible-deploy]
     runs-on: ubuntu-latest
     if: success() && github.event_name != 'workflow_dispatch'
     
