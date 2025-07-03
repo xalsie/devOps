@@ -5,6 +5,13 @@ on:
     branches: [ main, develop ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      deploy_ansible:
+        description: 'Déployer avec Ansible après validation'
+        required: false
+        default: 'false'
+        type: boolean
 
 env:
   REGISTRY: ghcr.io
@@ -161,11 +168,18 @@ jobs:
         echo "   Frontend Public: $FRONTEND_PUBLIC_IP"
         echo "   MongoDB Public:  $MONGODB_PUBLIC_IP"
         
+        # Créer les répertoires si ils n'existent pas
+        mkdir -p frontend
+        mkdir -p ansible
+        
         # Générer le fichier .env pour le frontend
         cat > frontend/.env << EOF
         # Configuration générée depuis les outputs Terraform réels
         VITE_BACKEND_URL=http://$BACKEND_PUBLIC_IP:3000
         EOF
+        
+        echo "✅ Fichier frontend/.env généré:"
+        cat frontend/.env
         
         # Générer le fichier inventory.ini pour Ansible
         cat > ansible/inventory.ini << EOF
@@ -186,6 +200,13 @@ jobs:
         backend_public_ip=$BACKEND_PUBLIC_IP
         frontend_public_ip=$FRONTEND_PUBLIC_IP
         EOF
+        
+        echo "✅ Fichier ansible/inventory.ini généré:"
+        head -10 ansible/inventory.ini
+        
+        # Vérifier que les fichiers sont bien créés
+        echo "📋 Vérification des fichiers générés:"
+        ls -la frontend/.env ansible/inventory.ini
         
         echo "✅ Configurations générées avec les vraies valeurs Terraform"
 
@@ -216,6 +237,14 @@ jobs:
       with:
         name: generated-configs
         path: .
+        
+    - name: Debug artifact contents
+      run: |
+        echo "📋 Contenu téléchargé depuis l'artifact:"
+        find . -name "*.env" -o -name "inventory.ini" | head -10
+        echo ""
+        echo "📂 Structure actuelle:"
+        ls -la frontend/ ansible/ || echo "Répertoires manquants"
         
     - name: Verify configurations
       run: |
@@ -389,15 +418,96 @@ jobs:
       run: |
         echo "✅ Validation Ansible terminée"
         echo "📝 Playbook prêt pour le déploiement manuel"
-        echo "💡 Pour déployer manuellement:"
-        echo "   1. Créez l'infrastructure avec: terraform apply"
-        echo "   2. Mettez à jour inventory.ini avec les vraies IPs"
-        echo "   3. Lancez: ansible-playbook -i inventory.ini deploy.yml"
+        echo "💡 Pour déployer automatiquement, lancez le workflow 'Deploy Ansible'"
+
+  # Déploiement Ansible avec les vraies valeurs (manuel uniquement)
+  ansible-deploy:
+    needs: [ansible-validate]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.deploy_ansible == 'true'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Download generated configs
+      uses: actions/download-artifact@v4
+      with:
+        name: generated-configs
+        path: .
+        
+    - name: Setup Python and Ansible
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install Ansible
+      run: |
+        pip install ansible==${{ env.ANSIBLE_VERSION }}
+        ansible --version
+        
+    - name: Setup SSH key
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.AWS_SSH_PRIVATE_KEY }}" > ~/.ssh/aws-devops.pem
+        chmod 600 ~/.ssh/aws-devops.pem
+        ssh-keyscan -H $(jq -r '.backend_public_ip.value' infrastructure/outputs.json) >> ~/.ssh/known_hosts || true
+        ssh-keyscan -H $(jq -r '.frontend_public_ip.value' infrastructure/outputs.json) >> ~/.ssh/known_hosts || true
+        ssh-keyscan -H $(jq -r '.mongodb_public_ip.value' infrastructure/outputs.json) >> ~/.ssh/known_hosts || true
+        
+    - name: Verify infrastructure connectivity
+      run: |
+        echo "🔍 Vérification de la connectivité aux serveurs..."
+        
+        BACKEND_IP=$(jq -r '.backend_public_ip.value' infrastructure/outputs.json)
+        FRONTEND_IP=$(jq -r '.frontend_public_ip.value' infrastructure/outputs.json)
+        MONGODB_IP=$(jq -r '.mongodb_public_ip.value' infrastructure/outputs.json)
+        
+        echo "📋 Test de connectivité SSH:"
+        for ip in $BACKEND_IP $FRONTEND_IP $MONGODB_IP; do
+          echo "Testing $ip..."
+          ssh -i ~/.ssh/aws-devops.pem -o ConnectTimeout=10 -o StrictHostKeyChecking=no ec2-user@$ip "echo 'Connectivité OK sur $ip'" || echo "❌ Échec connexion à $ip"
+        done
+        
+    - name: Deploy with Ansible
+      run: |
+        cd ansible
+        echo "🚀 Déploiement Ansible en cours..."
+        
+        # Vérifier que l'inventory est disponible
+        if [ ! -f "inventory.ini" ]; then
+          echo "❌ Fichier inventory.ini manquant"
+          exit 1
+        fi
+        
+        echo "📋 Inventory utilisé:"
+        cat inventory.ini
+        echo ""
+        
+        # Lancer le déploiement
+        ansible-playbook -i inventory.ini deploy.yml \
+          --extra-vars "github_username=${{ github.repository_owner }}" \
+          --extra-vars "github_token=${{ secrets.GITHUB_TOKEN }}" \
+          -v
+          
+    - name: Deployment status
+      run: |
+        echo "✅ Déploiement Ansible terminé avec succès!"
+        echo ""
+        echo "🌐 URLs d'accès:"
+        BACKEND_IP=$(jq -r '.backend_public_ip.value' infrastructure/outputs.json)
+        FRONTEND_IP=$(jq -r '.frontend_public_ip.value' infrastructure/outputs.json)
+        echo "   Backend:  http://$BACKEND_IP:3000"
+        echo "   Frontend: http://$FRONTEND_IP"
+        echo ""
+        echo "🔧 Connexions SSH:"
+        echo "   Backend:  ssh -i ~/.ssh/aws-devops.pem ec2-user@$BACKEND_IP"
+        echo "   Frontend: ssh -i ~/.ssh/aws-devops.pem ec2-user@$FRONTEND_IP"
 
   notify-success:
     needs: [ansible-validate]
     runs-on: ubuntu-latest
-    if: success()
+    if: success() && github.event_name != 'workflow_dispatch'
     
     steps:
     - name: Success notification
@@ -413,18 +523,35 @@ jobs:
         echo "   - ${{ env.IMAGE_NAME_BACKEND }}:latest"
         echo "   - ${{ env.IMAGE_NAME_FRONTEND }}:latest"
         echo ""
-        echo "🚀 DÉPLOIEMENT MANUEL REQUIS :"
+        echo "🚀 DÉPLOIEMENT DISPONIBLE :"
         echo "================================="
-        echo "1. Créer l'infrastructure :"
-        echo "   cd infrastructure && terraform apply"
-        echo ""
-        echo "2. Récupérer les IPs :"
-        echo "   terraform output"
-        echo ""
-        echo "3. Mettre à jour inventory.ini avec les vraies IPs"
-        echo ""
-        echo "4. Déployer avec Ansible :"
+        echo "1. Automatique : Lancez le workflow 'Run workflow' avec l'option 'Déployer avec Ansible'"
+        echo "2. Manuel : "
         echo "   cd ansible && ansible-playbook -i inventory.ini deploy.yml"
+
+  notify-deploy-success:
+    needs: [ansible-deploy]
+    runs-on: ubuntu-latest
+    if: success() && github.event_name == 'workflow_dispatch' && inputs.deploy_ansible == 'true'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Deploy success notification
+      run: |
+        echo "🎉 DÉPLOIEMENT ANSIBLE RÉUSSI !"
+        echo "================================="
+        
+        # Récupérer les outputs
+        BACKEND_IP=$(jq -r '.backend_public_ip.value' infrastructure/outputs.json)
+        FRONTEND_IP=$(jq -r '.frontend_public_ip.value' infrastructure/outputs.json)
+        
+        echo "🌐 Application déployée et accessible :"
+        echo "   Backend:  http://$BACKEND_IP:3000"
+        echo "   Frontend: http://$FRONTEND_IP"
+        echo ""
+        echo "✅ Infrastructure complètement déployée et configurée"
 
   cleanup-on-failure:
     needs: [terraform-validate, ansible-validate]
