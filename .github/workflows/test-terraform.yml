@@ -85,10 +85,75 @@ jobs:
         # Outputs disponibles
         echo "## Outputs Terraform" >> $REPORT_FILE
         echo "" >> $REPORT_FILE
-        if [ -f "outputs.tf" ]; then
-          grep -E "^output" outputs.tf | sed 's/output "\([^"]*\)".*/- \1/' >> $REPORT_FILE
+        
+        # Vérifier si l'infrastructure existe déjà
+        if terraform state list >/dev/null 2>&1 && [ $(terraform state list | wc -l) -gt 0 ]; then
+          echo "### 🚀 Infrastructure déployée - Valeurs actuelles:" >> $REPORT_FILE
+          echo "" >> $REPORT_FILE
+          echo "| Output | Description | Valeur Actuelle |" >> $REPORT_FILE
+          echo "|--------|-------------|-----------------|" >> $REPORT_FILE
+          
+          # Extraire chaque output avec sa description et valeur
+          if [ -f "outputs.tf" ]; then
+            while IFS= read -r line; do
+              if [[ $line =~ ^output ]]; then
+                output_name=$(echo "$line" | sed 's/output "\([^"]*\)".*/\1/')
+                description=$(awk "/^output \"$output_name\"/,/^}/" outputs.tf | grep -E "description\s*=" | sed 's/.*description\s*=\s*"\([^"]*\)".*/\1/' | head -1)
+                
+                # Récupérer la valeur réelle
+                actual_value=$(terraform output -raw "$output_name" 2>/dev/null || echo "N/A")
+                
+                # Formatage de la valeur (limiter la longueur pour les valeurs très longues)
+                if [ ${#actual_value} -gt 50 ]; then
+                  display_value="${actual_value:0:47}..."
+                else
+                  display_value="$actual_value"
+                fi
+                
+                # Ajouter à la table
+                if [ -n "$description" ] && [ "$description" != "" ]; then
+                  echo "| \`$output_name\` | $description | \`$display_value\` |" >> $REPORT_FILE
+                else
+                  echo "| \`$output_name\` | - | \`$display_value\` |" >> $REPORT_FILE
+                fi
+              fi
+            done < outputs.tf
+          fi
+          echo "" >> $REPORT_FILE
+          
+          # Afficher également la sortie brute complète
+          echo "<details>" >> $REPORT_FILE
+          echo "<summary>📋 Voir tous les outputs (format brut)</summary>" >> $REPORT_FILE
+          echo "" >> $REPORT_FILE
+          echo "\`\`\`" >> $REPORT_FILE
+          terraform output >> $REPORT_FILE 2>/dev/null || echo "Erreur lors de la récupération des outputs" >> $REPORT_FILE
+          echo "\`\`\`" >> $REPORT_FILE
+          echo "</details>" >> $REPORT_FILE
+          echo "" >> $REPORT_FILE
+          
+        else
+          echo "### ⏳ Infrastructure non déployée - Outputs qui seront disponibles:" >> $REPORT_FILE
+          echo "" >> $REPORT_FILE
+          echo "| Output | Description |" >> $REPORT_FILE
+          echo "|--------|-------------|" >> $REPORT_FILE
+          
+          # Lister les outputs définis sans valeurs
+          if [ -f "outputs.tf" ]; then
+            while IFS= read -r line; do
+              if [[ $line =~ ^output ]]; then
+                output_name=$(echo "$line" | sed 's/output "\([^"]*\)".*/\1/')
+                description=$(awk "/^output \"$output_name\"/,/^}/" outputs.tf | grep -E "description\s*=" | sed 's/.*description\s*=\s*"\([^"]*\)".*/\1/' | head -1)
+                
+                if [ -n "$description" ] && [ "$description" != "" ]; then
+                  echo "| \`$output_name\` | $description |" >> $REPORT_FILE
+                else
+                  echo "| \`$output_name\` | - |" >> $REPORT_FILE
+                fi
+              fi
+            done < outputs.tf
+          fi
+          echo "" >> $REPORT_FILE
         fi
-        echo "" >> $REPORT_FILE
         
         # Instructions
         echo "## Instructions de déploiement" >> $REPORT_FILE

@@ -77,6 +77,68 @@ deploy_infrastructure() {
     log_success "Infrastructure déployée avec succès"
 }
 
+generate_outputs() {
+    log_info "🔄 Génération des outputs Terraform..."
+    
+    cd infrastructure
+    
+    # Vérification de l'état Terraform
+    if [ ! -f "terraform.tfstate" ]; then
+        log_error "Aucun état Terraform trouvé. Exécutez 'terraform apply' d'abord."
+        exit 1
+    fi
+    
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    OUTPUTS_FILE="$SCRIPT_DIR/outputs.json"
+
+    echo "🔄 Génération des outputs Terraform..."
+
+    # Vérifier que Terraform est initialisé
+    if [ ! -d ".terraform" ]; then
+        echo "❌ Terraform n'est pas initialisé. Lancez 'terraform init' d'abord."
+        exit 1
+    fi
+
+    # Vérifier qu'il y a un state avec des ressources
+    if [ ! -f "terraform.tfstate" ] || [ ! -s "terraform.tfstate" ]; then
+        echo "❌ Aucun state Terraform trouvé. Lancez 'terraform apply' d'abord."
+        exit 1
+    fi
+
+    # Générer les outputs en JSON
+    echo "📄 Extraction des outputs Terraform..."
+    terraform output -json > "$OUTPUTS_FILE"
+
+    if [ $? -eq 0 ] && [ -s "$OUTPUTS_FILE" ]; then
+        echo "✅ Outputs générés avec succès dans: $OUTPUTS_FILE"
+        echo ""
+        echo "📋 Contenu des outputs:"
+        echo "======================"
+        
+        # Afficher les outputs de manière lisible
+        if command -v jq &> /dev/null; then
+            jq -r 'to_entries[] | "- \(.key): \(.value.value)"' "$OUTPUTS_FILE"
+        else
+            cat "$OUTPUTS_FILE"
+        fi
+        
+        echo ""
+        echo "💡 Ce fichier sera utilisé par la CI GitHub Actions pour:"
+        echo "   - Générer frontend/.env avec l'URL du backend"
+        echo "   - Générer ansible/inventory.ini avec les IPs des serveurs"
+        echo ""
+        echo "🚀 Vous pouvez maintenant pusher vos changements pour déclencher la CI"
+    else
+        echo "❌ Erreur lors de la génération des outputs"
+        rm -f "$OUTPUTS_FILE"
+        exit 1
+    fi
+    
+    log_success "Outputs générés avec succès dans: outputs.json"
+    
+    cd ..
+}
+
 # ÉTAPE 2: Génération des fichiers .env et inventory.ini avec les IPs correctes
 generate_config_files() {
     log_info "📝 ÉTAPE 2: Génération des fichiers de configuration"
@@ -141,6 +203,15 @@ EOF
 # ÉTAPE 3: Construction et push des images Docker vers GitHub Container Registry
 build_and_push_images() {
     log_info "🐳 ÉTAPE 3: Construction et push des images Docker"
+
+    if [ ! -f "frontend/.env" ]; then
+        log_error "Le fichier frontend/.env est manquant. Exécutez d'abord la génération de l'infrastructure."
+        exit 1
+    fi
+    if [ ! -f "ansible/inventory.ini" ]; then
+        log_error "Le fichier ansible/inventory.ini est manquant. Exécutez d'abord la génération de l'infrastructure."
+        exit 1
+    fi
     
     # Connexion au GitHub Container Registry
     log_info "Connexion au GitHub Container Registry..."
@@ -260,6 +331,9 @@ deploy_with_ansible() {
     ansible-playbook -i inventory.ini deploy.yml --extra-vars "github_username=xalsie github_token=$GITHUB_TOKEN"
     
     cd ..
+
+    rm -f frontend/.env
+    rm -f ansible/inventory.ini
     log_success "Déploiement Ansible terminé avec succès"
 }
 
@@ -349,7 +423,14 @@ case "${1:-help}" in
         echo
         check_prerequisites
         deploy_infrastructure
-        generate_config_files
+        generate_outputs
+        show_deployment_info
+        ;;
+    "build")
+        echo "🚀 DÉPLOIEMENT AUTOMATISÉ PARTIEL"
+        echo "=================================="
+        echo
+        check_prerequisites
         build_and_push_images
         deploy_with_ansible
         show_deployment_info

@@ -1,0 +1,67 @@
+{
+  "backend_private_ip": {
+    "sensitive": false,
+    "type": "string",
+    "value": "10.0.1.68"
+  },
+  "backend_public_ip": {
+    "sensitive": false,
+    "type": "string",
+    "value": "15.188.73.57"
+  },
+  "backend_security_groups": {
+    "sensitive": false,
+    "type": [
+      "set",
+      "string"
+    ],
+    "value": [
+      "sg-07ef55eb70210b70d"
+    ]
+  },
+  "frontend_private_ip": {
+    "sensitive": false,
+    "type": "string",
+    "value": "10.0.1.155"
+  },
+  "frontend_public_ip": {
+    "sensitive": false,
+    "type": "string",
+    "value": "52.47.156.141"
+  },
+  "mongodb_private_ip": {
+    "sensitive": false,
+    "type": "string",
+    "value": "10.0.1.191"
+  },
+  "mongodb_public_ip": {
+    "sensitive": false,
+    "type": "string",
+    "value": "51.44.181.149"
+  },
+  "security_group_id": {
+    "sensitive": false,
+    "type": "string",
+    "value": "sg-07ef55eb70210b70d"
+  },
+  "ssh_connection_backend": {
+    "sensitive": false,
+    "type": "string",
+    "value": "ssh -i ~/.ssh/aws-devops.pem ec2-user@15.188.73.57"
+  },
+  "ssh_connection_frontend": {
+    "sensitive": false,
+    "type": "string",
+    "value": "ssh -i ~/.ssh/aws-devops.pem ec2-user@52.47.156.141"
+  },
+  "ssh_connection_mongodb": {
+    "sensitive": false,
+    "type": "string",
+    "value": "ssh -i ~/.ssh/aws-devops.pem ec2-user@51.44.181.149"
+  },
+  "vpc_id": {
+    "sensitive": false,
+    "type": "string",
+    "value": "vpc-072d8cb97120963e9"
+  }
+}
