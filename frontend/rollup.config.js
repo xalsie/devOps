@@ -12,6 +12,10 @@ dotenv.config({ path: '.env.production' });
 
 const production = !process.env.ROLLUP_WATCH;
 
+// Debug: Afficher la valeur de VITE_BACKEND_URL
+console.log('🔧 VITE_BACKEND_URL:', process.env.VITE_BACKEND_URL);
+console.log('🔧 Production mode:', production);
+
 function serve() {
 	let server;
 
@@ -44,7 +48,7 @@ export default {
 	plugins: [
 		replace({
 			'process.env.NODE_ENV': JSON.stringify(production ? 'production' : 'development'),
-			'import.meta.env.VITE_BACKEND_URL': JSON.stringify(process.env.VITE_BACKEND_URL),
+			'__BACKEND_URL__': JSON.stringify(process.env.VITE_BACKEND_URL || 'http://localhost:3000'),
 			preventAssignment: true
 		}),
 		svelte({

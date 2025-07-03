@@ -10,9 +10,12 @@
 	
 	// Configuration de l'URL de l'API
 	// En développement, utiliser localhost, en production utiliser la variable d'environnement
-	let API_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000';
+	let API_URL = __BACKEND_URL__ || 'http://localhost:3000';
 	// Ajouter /api à l'URL de base
 	API_URL = `${API_URL}/api`;
+	
+	// Debug: Afficher l'URL utilisée
+	console.log('🔧 Backend URL utilisée:', API_URL);
 	
 	onMount(() => {
 		fetchUsers();
