@@ -1,0 +1,65 @@
+name: Test Terraform Outputs
+
+on:
+  workflow_dispatch:  # Permet de lancer manuellement
+
+env:
+  TF_VERSION: "1.6.0"
+
+jobs:
+  test-terraform:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./infrastructure
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ env.TF_VERSION }}
+        terraform_wrapper: false
+        
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_REGION || 'us-west-2' }}
+        
+    - name: Terraform Init
+      run: terraform init -backend=false
+      
+    - name: Terraform Validate
+      run: terraform validate
+      
+    - name: Terraform Plan (Dry Run)
+      run: |
+        echo "🧪 Test du plan Terraform..."
+        terraform plan -var-file="terraform.tfvars" -no-color
+        
+    - name: Check outputs definition
+      run: |
+        echo "📋 Vérification des outputs définis:"
+        if [ -f "outputs.tf" ]; then
+          echo "✅ Le fichier outputs.tf existe"
+          echo "Outputs définis:"
+          grep -E "^output" outputs.tf || echo "Aucun output trouvé"
+        else
+          echo "❌ Le fichier outputs.tf n'existe pas"
+          exit 1
+        fi
+        
+    - name: Success
+      run: |
+        echo "✅ Terraform est prêt pour le déploiement!"
+        echo "Les outputs suivants seront disponibles après apply:"
+        echo "  - backend_public_ip"
+        echo "  - frontend_public_ip" 
+        echo "  - mongodb_public_ip"
+        echo "  - backend_private_ip"
+        echo "  - frontend_private_ip"
+        echo "  - mongodb_private_ip"

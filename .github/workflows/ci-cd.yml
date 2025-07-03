@@ -192,7 +192,8 @@ jobs:
         cache-from: type=gha
         cache-to: type=gha,mode=max
 
-  terraform-deploy:
+  # Validation de l'infrastructure (sans déploiement)
+  terraform-validate:
     needs: [docker-build-push]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
@@ -200,11 +201,6 @@ jobs:
     defaults:
       run:
         working-directory: ./infrastructure
-        
-    outputs:
-      backend_ip: ${{ steps.terraform-output.outputs.backend_ip }}
-      frontend_ip: ${{ steps.terraform-output.outputs.frontend_ip }}
-      mongodb_ip: ${{ steps.terraform-output.outputs.mongodb_ip }}
     
     steps:
     - name: Checkout code
@@ -231,49 +227,73 @@ jobs:
         terraform plan -var-file="terraform.tfvars" -out=tfplan
         terraform show -no-color tfplan
 
-    # - name: Terraform Apply
-    #   run: terraform apply -auto-approve tfplan
-      
-    - name: Get Terraform Outputs
-      id: terraform-output
+    - name: Validation Complete
       run: |
-        echo "backend_ip=$(terraform output -raw backend_public_ip)" >> $GITHUB_OUTPUT
-        echo "frontend_ip=$(terraform output -raw frontend_public_ip)" >> $GITHUB_OUTPUT
-        echo "mongodb_ip=$(terraform output -raw mongodb_public_ip)" >> $GITHUB_OUTPUT
+        echo "✅ Validation Terraform terminée avec succès"
+        echo "📋 Plan vérifié - aucune infrastructure créée"
+        echo "💡 Pour déployer, lancez manuellement: terraform apply"
+
+  # Simulation du déploiement pour les tests de pipeline
+  simulate-deployment:
+    needs: [terraform-validate]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    outputs:
+      backend_ip: ${{ steps.mock-outputs.outputs.backend_ip }}
+      frontend_ip: ${{ steps.mock-outputs.outputs.frontend_ip }}
+      mongodb_ip: ${{ steps.mock-outputs.outputs.mongodb_ip }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Generate mock configuration files
+      id: mock-outputs
+      run: |
+        echo "🎭 Simulation du déploiement (pas de vraie infrastructure créée)"
         
-        # Générer les fichiers de configuration
-        echo "Génération des fichiers de configuration..."
-        BACKEND_PUBLIC_IP=$(terraform output -raw backend_public_ip)
-        BACKEND_PRIVATE_IP=$(terraform output -raw backend_private_ip)
-        MONGODB_PRIVATE_IP=$(terraform output -raw mongodb_private_ip)
-        FRONTEND_PUBLIC_IP=$(terraform output -raw frontend_public_ip)
+        # Valeurs factices pour tester la pipeline
+        BACKEND_IP="1.2.3.4"
+        FRONTEND_IP="5.6.7.8" 
+        MONGODB_IP="9.10.11.12"
+        
+        echo "backend_ip=$BACKEND_IP" >> $GITHUB_OUTPUT
+        echo "frontend_ip=$FRONTEND_IP" >> $GITHUB_OUTPUT
+        echo "mongodb_ip=$MONGODB_IP" >> $GITHUB_OUTPUT
+        
+        echo "📝 Génération des fichiers de configuration de test..."
         
         # Créer le fichier .env pour le frontend
-        mkdir -p ../frontend
-        cat > ../frontend/.env << EOF
-        VITE_BACKEND_URL=http://$BACKEND_PUBLIC_IP:3000
+        mkdir -p frontend
+        cat > frontend/.env << EOF
+        # Configuration de test - remplacer par les vraies IPs après déploiement manuel
+        VITE_BACKEND_URL=http://$BACKEND_IP:3000
         EOF
         
-        # Créer l'inventory Ansible
-        mkdir -p ../ansible
-        cat > ../ansible/inventory.ini << EOF
+        # Créer l'inventory Ansible de test
+        mkdir -p ansible
+        cat > ansible/inventory.ini << EOF
+        # Inventory de test - remplacer par les vraies IPs après déploiement manuel
         [mongodb]
-        $MONGODB_PRIVATE_IP ansible_user=ec2-user ansible_ssh_private_key_file=/tmp/aws-devops.pem
+        $MONGODB_IP ansible_user=ec2-user ansible_ssh_private_key_file=/tmp/aws-devops.pem
         
         [backend]
-        $BACKEND_PUBLIC_IP ansible_user=ec2-user ansible_ssh_private_key_file=/tmp/aws-devops.pem
+        $BACKEND_IP ansible_user=ec2-user ansible_ssh_private_key_file=/tmp/aws-devops.pem
         
-        [frontend]
-        $FRONTEND_PUBLIC_IP ansible_user=ec2-user ansible_ssh_private_key_file=/tmp/aws-devops.pem
+        [frontend] 
+        $FRONTEND_IP ansible_user=ec2-user ansible_ssh_private_key_file=/tmp/aws-devops.pem
         
         [all:vars]
         ansible_ssh_common_args='-o StrictHostKeyChecking=no'
-        mongodb_private_ip=$MONGODB_PRIVATE_IP
-        backend_private_ip=$BACKEND_PRIVATE_IP
-        frontend_private_ip=$FRONTEND_PRIVATE_IP
-        backend_public_ip=$BACKEND_PUBLIC_IP
-        frontend_public_ip=$FRONTEND_PUBLIC_IP
+        mongodb_private_ip=$MONGODB_IP
+        backend_private_ip=$BACKEND_IP
+        frontend_private_ip=$FRONTEND_IP
+        backend_public_ip=$BACKEND_IP
+        frontend_public_ip=$FRONTEND_IP
         EOF
+        
+        echo "✅ Fichiers de configuration générés (avec IPs de test)"
         
     - name: Upload configuration files
       uses: actions/upload-artifact@v4
@@ -283,8 +303,9 @@ jobs:
           frontend/.env
           ansible/inventory.ini
 
-  ansible-deploy:
-    needs: [terraform-deploy]
+  # Test de la configuration Ansible (sans vraie connexion)
+  ansible-validate:
+    needs: [simulate-deployment]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     
@@ -307,102 +328,80 @@ jobs:
         pip install ansible==${{ env.ANSIBLE_VERSION }}
         ansible --version
         
-    - name: Setup SSH key
-      run: |
-        mkdir -p ~/.ssh
-        echo "${{ secrets.AWS_PRIVATE_KEY }}" > /tmp/aws-devops.pem
-        chmod 600 /tmp/aws-devops.pem
-        
-    - name: Wait for instances to be ready
-      run: |
-        echo "Attente que les instances soient prêtes..."
-        sleep 60
-        
-    - name: Test SSH connectivity
+    - name: Validate Ansible Playbook
       run: |
         cd ansible
-        ansible all -i inventory.ini -m ping --timeout=30 || true
+        echo "🔍 Validation du playbook Ansible..."
         
-    - name: Run Ansible Playbook
+        # Vérifier la syntaxe du playbook
+        if [ -f "deploy.yml" ]; then
+          ansible-playbook --syntax-check deploy.yml
+          echo "✅ Syntaxe du playbook valide"
+        else
+          echo "❌ Fichier deploy.yml non trouvé"
+          exit 1
+        fi
+        
+        # Vérifier que l'inventory est bien formé
+        if [ -f "inventory.ini" ]; then
+          echo "📋 Contenu de l'inventory généré:"
+          cat inventory.ini
+          echo "✅ Inventory généré avec succès"
+        else
+          echo "❌ Fichier inventory.ini non trouvé"
+          exit 1
+        fi
+        
+    - name: Ansible validation complete
       run: |
-        cd ansible
-        ansible-playbook -i inventory.ini deploy.yml \
-          --extra-vars "github_username=xalsie github_token=${{ secrets.CR_PAT }}" \
-          --timeout=300 \
-          -v
-          
-    - name: Verify deployment
-      run: |
-        echo "Vérification du déploiement..."
-        BACKEND_IP="${{ needs.terraform-deploy.outputs.backend_ip }}"
-        FRONTEND_IP="${{ needs.terraform-deploy.outputs.frontend_ip }}"
-        
-        # Test health check backend
-        curl -f http://$BACKEND_IP:3000/health || echo "Backend health check failed"
-        
-        # Test frontend
-        curl -f http://$FRONTEND_IP:80 || echo "Frontend check failed"
+        echo "✅ Validation Ansible terminée"
+        echo "📝 Playbook prêt pour le déploiement manuel"
+        echo "💡 Pour déployer manuellement:"
+        echo "   1. Créez l'infrastructure avec: terraform apply"
+        echo "   2. Mettez à jour inventory.ini avec les vraies IPs"
+        echo "   3. Lancez: ansible-playbook -i inventory.ini deploy.yml"
 
   notify-success:
-    needs: [ansible-deploy]
+    needs: [ansible-validate]
     runs-on: ubuntu-latest
     if: success()
     
     steps:
     - name: Success notification
       run: |
-        echo "DÉPLOIEMENT COMPLET RÉUSSI !"
+        echo "🎉 VALIDATION CI/CD RÉUSSIE !"
         echo "================================="
-        echo "Tests passés (Backend/Frontend/Terraform)"
-        echo "mages Docker construites et poussées"
-        echo "Infrastructure déployée avec Terraform"
-        echo "Applications déployées avec Ansible"
+        echo "✅ Tests passés (Backend/Frontend/Terraform)"
+        echo "✅ Images Docker construites et poussées"
+        echo "✅ Infrastructure Terraform validée"
+        echo "✅ Playbook Ansible validé"
         echo ""
-        echo "Images disponibles :"
+        echo "📦 Images disponibles :"
         echo "   - ${{ env.IMAGE_NAME_BACKEND }}:latest"
         echo "   - ${{ env.IMAGE_NAME_FRONTEND }}:latest"
         echo ""
-        echo "Services accessibles :"
-        echo "   - Frontend: http://${{ needs.terraform-deploy.outputs.frontend_ip }}:80"
-        echo "   - Backend:  http://${{ needs.terraform-deploy.outputs.backend_ip }}:3000"
-        echo "   - Health:   http://${{ needs.terraform-deploy.outputs.backend_ip }}:3000/health"
+        echo "🚀 DÉPLOIEMENT MANUEL REQUIS :"
+        echo "================================="
+        echo "1. Créer l'infrastructure :"
+        echo "   cd infrastructure && terraform apply"
+        echo ""
+        echo "2. Récupérer les IPs :"
+        echo "   terraform output"
+        echo ""
+        echo "3. Mettre à jour inventory.ini avec les vraies IPs"
+        echo ""
+        echo "4. Déployer avec Ansible :"
+        echo "   cd ansible && ansible-playbook -i inventory.ini deploy.yml"
 
   cleanup-on-failure:
-    needs: [terraform-deploy, ansible-deploy]
+    needs: [terraform-validate, ansible-validate]
     runs-on: ubuntu-latest
     if: failure() && github.ref == 'refs/heads/main'
     
-    defaults:
-      run:
-        working-directory: ./infrastructure
-    
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Setup Terraform
-      uses: hashicorp/setup-terraform@v3
-      with:
-        terraform_version: ${{ env.TF_VERSION }}
-        
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ secrets.AWS_REGION || 'us-west-2' }}
-        
-    - name: Terraform Init
-      run: terraform init
-      
-    - name: Cleanup failed deployment
-      run: |
-        echo "Nettoyage des ressources suite à l'échec du déploiement..."
-        terraform destroy -var-file="terraform.tfvars" -auto-approve || echo "Cleanup failed, manual intervention may be required"
-        
     - name: Failure notification
       run: |
-        echo "ÉCHEC DU DÉPLOIEMENT"
+        echo "❌ ÉCHEC DE LA VALIDATION CI/CD"
         echo "======================"
-        echo "Le déploiement a échoué et les ressources ont été nettoyées."
-        echo "Vérifiez les logs des étapes précédentes pour identifier le problème."
+        echo "La validation a échoué. Vérifiez les logs des étapes précédentes."
+        echo "Aucune infrastructure n'a été créée - pas de nettoyage nécessaire."
