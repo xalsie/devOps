@@ -3,6 +3,9 @@ FROM node:18-alpine as builder
 
 LABEL org.opencontainers.image.source https://github.com/xalsie/devops
 
+# Définir l'argument de build pour l'URL du backend
+ARG VITE_BACKEND_URL=http://localhost:3000
+
 WORKDIR /app
 
 COPY package*.json ./
@@ -10,6 +13,14 @@ COPY package*.json ./
 RUN npm ci
 
 COPY . .
+
+# Créer le fichier .env.production avec la valeur du build-arg
+RUN echo "# Configuration générée depuis les arguments Docker" > .env.production && \
+    echo "VITE_BACKEND_URL=${VITE_BACKEND_URL}" >> .env.production && \
+    echo "✅ Fichier .env.production créé avec VITE_BACKEND_URL=${VITE_BACKEND_URL}"
+
+# Afficher le contenu pour debug
+RUN cat .env.production
 
 RUN npm run build
 
