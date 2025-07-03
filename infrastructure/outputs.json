@@ -2,12 +2,12 @@
   "backend_private_ip": {
     "sensitive": false,
     "type": "string",
-    "value": "10.0.1.54"
+    "value": "10.0.1.170"
   },
   "backend_public_ip": {
     "sensitive": false,
     "type": "string",
-    "value": "51.44.222.252"
+    "value": "13.36.178.39"
   },
   "backend_security_groups": {
     "sensitive": false,
@@ -16,52 +16,52 @@
       "string"
     ],
     "value": [
-      "sg-07ac53959238db3f4"
+      "sg-0a8815210581b1006"
     ]
   },
   "frontend_private_ip": {
     "sensitive": false,
     "type": "string",
-    "value": "10.0.1.22"
+    "value": "10.0.1.44"
   },
   "frontend_public_ip": {
     "sensitive": false,
     "type": "string",
-    "value": "13.38.27.229"
+    "value": "13.38.54.47"
   },
   "mongodb_private_ip": {
     "sensitive": false,
     "type": "string",
-    "value": "10.0.1.11"
+    "value": "10.0.1.144"
   },
   "mongodb_public_ip": {
     "sensitive": false,
     "type": "string",
-    "value": "15.236.37.97"
+    "value": "35.180.187.102"
   },
   "security_group_id": {
     "sensitive": false,
     "type": "string",
-    "value": "sg-07ac53959238db3f4"
+    "value": "sg-0a8815210581b1006"
   },
   "ssh_connection_backend": {
     "sensitive": false,
     "type": "string",
-    "value": "ssh -i ~/.ssh/aws-devops.pem ec2-user@51.44.222.252"
+    "value": "ssh -i ~/.ssh/aws-devops.pem ec2-user@13.36.178.39"
   },
   "ssh_connection_frontend": {
     "sensitive": false,
     "type": "string",
-    "value": "ssh -i ~/.ssh/aws-devops.pem ec2-user@13.38.27.229"
+    "value": "ssh -i ~/.ssh/aws-devops.pem ec2-user@13.38.54.47"
   },
   "ssh_connection_mongodb": {
     "sensitive": false,
     "type": "string",
-    "value": "ssh -i ~/.ssh/aws-devops.pem ec2-user@15.236.37.97"
+    "value": "ssh -i ~/.ssh/aws-devops.pem ec2-user@35.180.187.102"
   },
   "vpc_id": {
     "sensitive": false,
     "type": "string",
-    "value": "vpc-0bd0aab8805a107b6"
+    "value": "vpc-0a3614021650d3a98"
   }
 }
