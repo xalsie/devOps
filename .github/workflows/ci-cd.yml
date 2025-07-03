@@ -8,7 +8,10 @@ on:
   workflow_dispatch:
     inputs:
       deploy_ansible:
-        description: 'Déployer avec Ansible après validation'
+        description: 'Déployer avec Ansible après valid        echo "📄 Détails des fichiers:"
+        ls -la frontend/.env ansible/inventory.ini
+        
+        echo "🔍 Contenu du fichier .env:"n'
         required: false
         default: 'false'
         type: boolean
@@ -175,9 +178,9 @@ jobs:
         # Générer le fichier .env pour le frontend
         echo "🔧 Génération du fichier frontend/.env..."
         cat > frontend/.env <<-EOF
-# Configuration générée depuis les outputs Terraform réels
-VITE_BACKEND_URL=http://$BACKEND_PUBLIC_IP:3000
-EOF
+        # Configuration générée depuis les outputs Terraform réels
+        VITE_BACKEND_URL=http://$BACKEND_PUBLIC_IP:3000
+        EOF
         
         echo "✅ Fichier frontend/.env généré:"
         cat frontend/.env
@@ -186,23 +189,23 @@ EOF
         # Générer le fichier inventory.ini pour Ansible
         echo "🔧 Génération du fichier ansible/inventory.ini..."
         cat > ansible/inventory.ini <<-EOF
-[mongodb]
-$MONGODB_PUBLIC_IP ansible_user=ec2-user ansible_ssh_private_key_file=~/.ssh/aws-devops.pem
+        [mongodb]
+        $MONGODB_PUBLIC_IP ansible_user=ec2-user ansible_ssh_private_key_file=~/.ssh/aws-devops.pem
 
-[backend]
-$BACKEND_PUBLIC_IP ansible_user=ec2-user ansible_ssh_private_key_file=~/.ssh/aws-devops.pem
+        [backend]
+        $BACKEND_PUBLIC_IP ansible_user=ec2-user ansible_ssh_private_key_file=~/.ssh/aws-devops.pem
 
-[frontend]
-$FRONTEND_PUBLIC_IP ansible_user=ec2-user ansible_ssh_private_key_file=~/.ssh/aws-devops.pem
+        [frontend]
+        $FRONTEND_PUBLIC_IP ansible_user=ec2-user ansible_ssh_private_key_file=~/.ssh/aws-devops.pem
 
-[all:vars]
-ansible_ssh_common_args='-o StrictHostKeyChecking=no'
-mongodb_private_ip=$MONGODB_PRIVATE_IP
-backend_private_ip=$BACKEND_PRIVATE_IP
-frontend_private_ip=$FRONTEND_PRIVATE_IP
-backend_public_ip=$BACKEND_PUBLIC_IP
-frontend_public_ip=$FRONTEND_PUBLIC_IP
-EOF
+        [all:vars]
+        ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+        mongodb_private_ip=$MONGODB_PRIVATE_IP
+        backend_private_ip=$BACKEND_PRIVATE_IP
+        frontend_private_ip=$FRONTEND_PRIVATE_IP
+        backend_public_ip=$BACKEND_PUBLIC_IP
+        frontend_public_ip=$FRONTEND_PUBLIC_IP
+        EOF
         
         echo "✅ Fichier ansible/inventory.ini généré:"
         head -10 ansible/inventory.ini
