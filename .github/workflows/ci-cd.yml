@@ -173,40 +173,65 @@ jobs:
         mkdir -p ansible
         
         # Générer le fichier .env pour le frontend
-        cat > frontend/.env << EOF
-        # Configuration générée depuis les outputs Terraform réels
-        VITE_BACKEND_URL=http://$BACKEND_PUBLIC_IP:3000
-        EOF
+        echo "🔧 Génération du fichier frontend/.env..."
+        cat > frontend/.env <<-EOF
+# Configuration générée depuis les outputs Terraform réels
+VITE_BACKEND_URL=http://$BACKEND_PUBLIC_IP:3000
+EOF
         
         echo "✅ Fichier frontend/.env généré:"
         cat frontend/.env
+        echo "📏 Taille du fichier: $(wc -c < frontend/.env) bytes"
         
         # Générer le fichier inventory.ini pour Ansible
-        cat > ansible/inventory.ini << EOF
-        [mongodb]
-        $MONGODB_PUBLIC_IP ansible_user=ec2-user ansible_ssh_private_key_file=~/.ssh/aws-devops.pem
+        echo "🔧 Génération du fichier ansible/inventory.ini..."
+        cat > ansible/inventory.ini <<-EOF
+[mongodb]
+$MONGODB_PUBLIC_IP ansible_user=ec2-user ansible_ssh_private_key_file=~/.ssh/aws-devops.pem
 
-        [backend]
-        $BACKEND_PUBLIC_IP ansible_user=ec2-user ansible_ssh_private_key_file=~/.ssh/aws-devops.pem
+[backend]
+$BACKEND_PUBLIC_IP ansible_user=ec2-user ansible_ssh_private_key_file=~/.ssh/aws-devops.pem
 
-        [frontend]
-        $FRONTEND_PUBLIC_IP ansible_user=ec2-user ansible_ssh_private_key_file=~/.ssh/aws-devops.pem
+[frontend]
+$FRONTEND_PUBLIC_IP ansible_user=ec2-user ansible_ssh_private_key_file=~/.ssh/aws-devops.pem
 
-        [all:vars]
-        ansible_ssh_common_args='-o StrictHostKeyChecking=no'
-        mongodb_private_ip=$MONGODB_PRIVATE_IP
-        backend_private_ip=$BACKEND_PRIVATE_IP
-        frontend_private_ip=$FRONTEND_PRIVATE_IP
-        backend_public_ip=$BACKEND_PUBLIC_IP
-        frontend_public_ip=$FRONTEND_PUBLIC_IP
-        EOF
+[all:vars]
+ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+mongodb_private_ip=$MONGODB_PRIVATE_IP
+backend_private_ip=$BACKEND_PRIVATE_IP
+frontend_private_ip=$FRONTEND_PRIVATE_IP
+backend_public_ip=$BACKEND_PUBLIC_IP
+frontend_public_ip=$FRONTEND_PUBLIC_IP
+EOF
         
         echo "✅ Fichier ansible/inventory.ini généré:"
         head -10 ansible/inventory.ini
+        echo "📏 Taille du fichier: $(wc -c < ansible/inventory.ini) bytes"
         
-        # Vérifier que les fichiers sont bien créés
-        echo "📋 Vérification des fichiers générés:"
+        # Vérification finale détaillée
+        echo "📋 Vérification finale des fichiers générés:"
+        echo "📁 Structure du répertoire courant:"
+        find . -name "*.env" -o -name "*.ini" | head -20
+        
+        echo "📄 Détails des fichiers:"
         ls -la frontend/.env ansible/inventory.ini
+        
+        echo "� Contenu du fichier .env:"
+        if [ -f "frontend/.env" ]; then
+            cat frontend/.env | hexdump -C | head -5
+            echo "Fichier .env existe et contient $(wc -l < frontend/.env) lignes"
+        else
+            echo "❌ ERREUR: Le fichier frontend/.env n'existe pas!"
+            ls -la frontend/
+        fi
+        
+        echo "🔍 Contenu du fichier inventory.ini:"
+        if [ -f "ansible/inventory.ini" ]; then
+            echo "Fichier inventory.ini existe et contient $(wc -l < ansible/inventory.ini) lignes"
+        else
+            echo "❌ ERREUR: Le fichier ansible/inventory.ini n'existe pas!"
+            ls -la ansible/
+        fi
         
         echo "✅ Configurations générées avec les vraies valeurs Terraform"
 
@@ -215,9 +240,10 @@ jobs:
       with:
         name: generated-configs
         path: |
-          frontend/
-          ansible/
+          frontend/.env
+          ansible/inventory.ini
         retention-days: 30
+        if-no-files-found: error
 
   docker-build-push:
     needs: [generate-config]
@@ -236,15 +262,51 @@ jobs:
       uses: actions/download-artifact@v4
       with:
         name: generated-configs
-        path: .
+        path: ./downloaded-configs
+        
+    - name: Restore config files structure
+      run: |
+        echo "🔄 Restauration de la structure des fichiers de config..."
+        mkdir -p frontend ansible
+        
+        # Copier les fichiers depuis le répertoire de téléchargement
+        if [ -f "downloaded-configs/frontend/.env" ]; then
+            cp downloaded-configs/frontend/.env frontend/.env
+            echo "✅ frontend/.env copié"
+        elif [ -f "downloaded-configs/.env" ]; then
+            cp downloaded-configs/.env frontend/.env
+            echo "✅ .env copié vers frontend/"
+        else
+            echo "❌ Fichier .env non trouvé dans l'artifact"
+            find downloaded-configs/ -name "*.env" | head -10
+        fi
+        
+        if [ -f "downloaded-configs/ansible/inventory.ini" ]; then
+            cp downloaded-configs/ansible/inventory.ini ansible/inventory.ini
+            echo "✅ ansible/inventory.ini copié"
+        elif [ -f "downloaded-configs/inventory.ini" ]; then
+            cp downloaded-configs/inventory.ini ansible/inventory.ini
+            echo "✅ inventory.ini copié vers ansible/"
+        else
+            echo "❌ Fichier inventory.ini non trouvé dans l'artifact"
+            find downloaded-configs/ -name "*.ini" | head -10
+        fi
         
     - name: Debug artifact contents
       run: |
         echo "📋 Contenu téléchargé depuis l'artifact:"
-        find . -name "*.env" -o -name "inventory.ini" | head -10
+        echo "🔍 Recherche de tous les fichiers .env et .ini:"
+        find . -name "*.env" -o -name "*.ini" | head -20
         echo ""
-        echo "📂 Structure actuelle:"
-        ls -la frontend/ ansible/ || echo "Répertoires manquants"
+        echo "🔍 Recherche de tous les fichiers (récursive):"
+        find . -type f | head -30
+        echo ""
+        echo "📂 Structure complète du répertoire courant:"
+        ls -la
+        echo ""
+        echo "📂 Contenu des sous-répertoires (si ils existent):"
+        ls -la frontend/ 2>/dev/null || echo "❌ Répertoire frontend/ non trouvé"
+        ls -la ansible/ 2>/dev/null || echo "❌ Répertoire ansible/ non trouvé"
 
     - name: Verify configurations
       run: |
@@ -378,7 +440,29 @@ jobs:
       uses: actions/download-artifact@v4
       with:
         name: generated-configs
-        path: .
+        path: ./downloaded-configs
+        
+    - name: Restore config files structure for validation
+      run: |
+        echo "🔄 Restauration de la structure des fichiers de config..."
+        mkdir -p frontend ansible
+        
+        # Copier les fichiers depuis le répertoire de téléchargement
+        if [ -f "downloaded-configs/frontend/.env" ]; then
+            cp downloaded-configs/frontend/.env frontend/.env
+            echo "✅ frontend/.env copié"
+        elif [ -f "downloaded-configs/.env" ]; then
+            cp downloaded-configs/.env frontend/.env
+            echo "✅ .env copié vers frontend/"
+        fi
+        
+        if [ -f "downloaded-configs/ansible/inventory.ini" ]; then
+            cp downloaded-configs/ansible/inventory.ini ansible/inventory.ini
+            echo "✅ ansible/inventory.ini copié"
+        elif [ -f "downloaded-configs/inventory.ini" ]; then
+            cp downloaded-configs/inventory.ini ansible/inventory.ini
+            echo "✅ inventory.ini copié vers ansible/"
+        fi
         
     - name: Setup Python and Ansible
       uses: actions/setup-python@v4
@@ -434,7 +518,29 @@ jobs:
       uses: actions/download-artifact@v4
       with:
         name: generated-configs
-        path: .
+        path: ./downloaded-configs
+        
+    - name: Restore config files structure for deployment
+      run: |
+        echo "🔄 Restauration de la structure des fichiers de config..."
+        mkdir -p frontend ansible
+        
+        # Copier les fichiers depuis le répertoire de téléchargement
+        if [ -f "downloaded-configs/frontend/.env" ]; then
+            cp downloaded-configs/frontend/.env frontend/.env
+            echo "✅ frontend/.env copié"
+        elif [ -f "downloaded-configs/.env" ]; then
+            cp downloaded-configs/.env frontend/.env
+            echo "✅ .env copié vers frontend/"
+        fi
+        
+        if [ -f "downloaded-configs/ansible/inventory.ini" ]; then
+            cp downloaded-configs/ansible/inventory.ini ansible/inventory.ini
+            echo "✅ ansible/inventory.ini copié"
+        elif [ -f "downloaded-configs/inventory.ini" ]; then
+            cp downloaded-configs/inventory.ini ansible/inventory.ini
+            echo "✅ inventory.ini copié vers ansible/"
+        fi
         
     - name: Setup Python and Ansible
       uses: actions/setup-python@v4
