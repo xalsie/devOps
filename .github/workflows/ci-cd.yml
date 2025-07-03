@@ -424,7 +424,7 @@ jobs:
   ansible-deploy:
     needs: [ansible-validate]
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.deploy_ansible == 'true'
+    if: github.ref == 'refs/heads/main'
     
     steps:
     - name: Checkout code
