@@ -174,10 +174,10 @@ jobs:
         
         # Générer le fichier .env pour le frontend
         cat > frontend/.env.production << EOF
-# Configuration générée depuis les outputs Terraform réels
-VITE_BACKEND_URL=http://$BACKEND_PUBLIC_IP:3000
-EOF
-        
+        # Configuration générée depuis les outputs Terraform réels
+        VITE_BACKEND_URL=http://$BACKEND_PUBLIC_IP:3000
+        EOF
+
         echo "✅ Fichier frontend/.env.production généré:"
         cat frontend/.env.production
         
