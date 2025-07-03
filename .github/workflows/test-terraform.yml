@@ -53,13 +53,123 @@ jobs:
           exit 1
         fi
         
+    - name: Generate Terraform Report
+      run: |
+        echo "📊 Génération du rapport Terraform..."
+        
+        # Créer le répertoire de rapport
+        mkdir -p ../reports
+        
+        # Génération du rapport avec timestamp
+        TIMESTAMP=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
+        REPORT_FILE="../reports/terraform-validation-report.md"
+        
+        cat > $REPORT_FILE << EOF
+# Rapport de Validation Terraform
+        
+**Date de génération :** $TIMESTAMP  
+**Workflow :** Test Terraform Outputs  
+**Branche :** ${{ github.ref_name }}  
+**Commit :** ${{ github.sha }}  
+**Déclenché par :** ${{ github.actor }}
+        
+## ✅ Statut de Validation
+        
+- [x] Terraform Init
+- [x] Terraform Validate  
+- [x] Terraform Plan
+- [x] Outputs définis
+        
+## 📋 Outputs Terraform Disponibles
+        
+Les outputs suivants seront disponibles après \`terraform apply\`:
+        
+EOF
+        
+        # Ajouter les détails des outputs depuis outputs.tf
+        echo "### Outputs définis dans outputs.tf:" >> $REPORT_FILE
+        echo "" >> $REPORT_FILE
+        
+        if [ -f "outputs.tf" ]; then
+          while IFS= read -r line; do
+            if [[ $line =~ ^output ]]; then
+              # Extraire le nom de l'output
+              output_name=$(echo "$line" | sed 's/output "\([^"]*\)".*/\1/')
+              echo "- **$output_name**" >> $REPORT_FILE
+              
+              # Chercher la description si elle existe
+              description=$(awk "/^output \"$output_name\"/,/^}/" outputs.tf | grep -E "description\s*=" | sed 's/.*description\s*=\s*"\([^"]*\)".*/\1/')
+              if [ -n "$description" ]; then
+                echo "  - Description: $description" >> $REPORT_FILE
+              fi
+              echo "" >> $REPORT_FILE
+            fi
+          done < outputs.tf
+        fi
+        
+        # Ajouter le plan Terraform au rapport
+        echo "## 📝 Plan Terraform (Aperçu)" >> $REPORT_FILE
+        echo "" >> $REPORT_FILE
+        echo "\`\`\`" >> $REPORT_FILE
+        terraform plan -var-file="terraform.tfvars" -no-color | head -50 >> $REPORT_FILE
+        echo "..." >> $REPORT_FILE
+        echo "\`\`\`" >> $REPORT_FILE
+        echo "" >> $REPORT_FILE
+        
+        # Ajouter les instructions de déploiement
+        cat >> $REPORT_FILE << EOF
+## 🚀 Instructions de Déploiement Manuel
+        
+### 1. Déployer l'infrastructure
+\`\`\`bash
+cd infrastructure
+terraform apply -var-file="terraform.tfvars"
+\`\`\`
+        
+### 2. Récupérer les outputs
+\`\`\`bash
+terraform output
+\`\`\`
+        
+### 3. Utiliser le script automatisé
+\`\`\`bash
+./deploy-manual.sh deploy
+\`\`\`
+        
+## 📊 Ressources à créer
+        
+D'après le plan Terraform, les ressources suivantes seront créées :
+- VPC avec subnets publics
+- 3 instances EC2 (MongoDB, Backend, Frontend)
+- Security Groups
+- Internet Gateway et Route Tables
+        
+**Coût estimé :** ~15-30€/mois (dépend de la région et l'utilisation)
+        
+---
+*Rapport généré automatiquement par GitHub Actions*
+EOF
+        
+        echo "✅ Rapport généré: $REPORT_FILE"
+        echo "📄 Contenu du rapport:"
+        cat $REPORT_FILE
+        
+    - name: Upload Terraform Report
+      uses: actions/upload-artifact@v4
+      with:
+        name: terraform-validation-report
+        path: reports/terraform-validation-report.md
+        retention-days: 30
+        
     - name: Success
       run: |
-        echo "✅ Terraform est prêt pour le déploiement!"
-        echo "Les outputs suivants seront disponibles après apply:"
-        echo "  - backend_public_ip"
-        echo "  - frontend_public_ip" 
-        echo "  - mongodb_public_ip"
-        echo "  - backend_private_ip"
-        echo "  - frontend_private_ip"
-        echo "  - mongodb_private_ip"
+        echo "🎉 Validation Terraform terminée avec succès!"
+        echo "📊 Rapport de validation généré et disponible en artifact"
+        echo ""
+        echo "📥 Pour télécharger le rapport:"
+        echo "  1. Allez dans l'onglet 'Actions' de GitHub"
+        echo "  2. Cliquez sur ce workflow" 
+        echo "  3. Téléchargez l'artifact 'terraform-validation-report'"
+        echo ""
+        echo "🚀 Prêt pour le déploiement manuel avec:"
+        echo "  ./deploy-manual.sh deploy"
