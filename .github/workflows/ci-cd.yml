@@ -230,7 +230,7 @@ jobs:
       run: |
         terraform plan -var-file="terraform.tfvars" -out=tfplan
         terraform show -no-color tfplan
-        
+
     # - name: Terraform Apply
     #   run: terraform apply -auto-approve tfplan
       
