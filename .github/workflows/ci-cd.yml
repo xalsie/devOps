@@ -215,8 +215,8 @@ jobs:
       with:
         name: generated-configs
         path: |
-          frontend/.env
-          ansible/inventory.ini
+          frontend/
+          ansible/
         retention-days: 30
 
   docker-build-push:
@@ -245,7 +245,7 @@ jobs:
         echo ""
         echo "📂 Structure actuelle:"
         ls -la frontend/ ansible/ || echo "Répertoires manquants"
-        
+
     - name: Verify configurations
       run: |
         echo "📋 Vérification des fichiers de configuration..."
