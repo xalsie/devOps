@@ -1,4 +1,3 @@
-# Récupérer l'AMI Amazon Linux 2023 la plus récente
 data "aws_ami" "amazon_linux" {
   most_recent = true
   owners      = ["amazon"]
@@ -14,7 +13,6 @@ data "aws_ami" "amazon_linux" {
   }
 }
 
-# Instance pour Frontend
 resource "aws_instance" "frontend" {
   ami                    = data.aws_ami.amazon_linux.id
   instance_type          = var.instance_type
@@ -29,8 +27,6 @@ resource "aws_instance" "frontend" {
     systemctl start docker
     systemctl enable docker
     usermod -a -G docker ec2-user
-    
-    # Installer Docker Compose
     curl -L "https://github.com/docker/compose/releases/download/v2.20.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
     chmod +x /usr/local/bin/docker-compose
   EOF

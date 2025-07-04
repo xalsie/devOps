@@ -1,33 +1,19 @@
-# Frontend Dockerfile
-FROM node:18-alpine as builder
+FROM node:24-alpine as builder
 
 LABEL org.opencontainers.image.source https://github.com/xalsie/devops
 
-# Définir l'argument de build pour l'URL du backend
 ARG VITE_BACKEND_URL=http://localhost:3000
-
 WORKDIR /app
-
 COPY package*.json ./
-
 RUN npm ci
-
 COPY . .
-
-# Créer le fichier .env.production avec la valeur du build-arg
 RUN echo "# Configuration générée depuis les arguments Docker" > .env.production && \
     echo "VITE_BACKEND_URL=${VITE_BACKEND_URL}" >> .env.production && \
     echo "✅ Fichier .env.production créé avec VITE_BACKEND_URL=${VITE_BACKEND_URL}"
-
-# Afficher le contenu pour debug
 RUN cat .env.production
-
 RUN npm run build
-
 FROM nginx:alpine
-
 COPY --from=builder /app/public /usr/share/nginx/html
-
 RUN echo 'server { \
     listen 80; \
     location / { \
@@ -36,7 +22,5 @@ RUN echo 'server { \
         try_files $uri $uri/ /index.html; \
     } \
 }' > /etc/nginx/conf.d/default.conf
-
 EXPOSE 80
-
 CMD ["nginx", "-g", "daemon off;"]

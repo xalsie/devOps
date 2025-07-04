@@ -62,13 +62,13 @@ async function connectToDatabase() {
       mongoClient = new MongoClient(MONGODB_URI);
       await mongoClient.connect();
       db = mongoClient.db(DB_NAME);
-      console.log('✅ Connecté à MongoDB');
+      console.log('Connecté à MongoDB');
     } else {
-      console.log('⚠️  Utilisation de la fausse base de données en mémoire');
+      console.log('Utilisation de la fausse base de données en mémoire');
     }
   } catch (error) {
-    console.error('❌ Erreur de connexion MongoDB:', error);
-    console.log('⚠️  Utilisation de la fausse base de données en mémoire');
+    console.error('Erreur de connexion MongoDB:', error);
+    console.log('Utilisation de la fausse base de données en mémoire');
   }
 }
 
@@ -259,26 +259,26 @@ async function startServer() {
   await connectToDatabase();
   
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Serveur API démarré sur le port ${PORT}`);
-    console.log(`📊 Health check: http://localhost:${PORT}/health`);
-    console.log(`🔗 API URL: http://localhost:${PORT}/api`);
+    console.log(`Serveur API démarré sur le port ${PORT}`);
+    console.log(`Health check: http://localhost:${PORT}/health`);
+    console.log(`API URL: http://localhost:${PORT}/api`);
   });
 }
 
 process.on('SIGINT', async () => {
-  console.log('\n⏹️  Arrêt du serveur...');
+  console.log('\nArrêt du serveur...');
   if (mongoClient) {
     await mongoClient.close();
-    console.log('🔒 Connexion MongoDB fermée');
+    console.log('Connexion MongoDB fermée');
   }
   process.exit(0);
 });
 
 process.on('SIGTERM', async () => {
-  console.log('\n⏹️  Arrêt du serveur...');
+  console.log('\nArrêt du serveur...');
   if (mongoClient) {
     await mongoClient.close();
-    console.log('🔒 Connexion MongoDB fermée');
+    console.log('Connexion MongoDB fermée');
   }
   process.exit(0);
 });

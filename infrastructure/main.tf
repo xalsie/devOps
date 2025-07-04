@@ -12,7 +12,6 @@ provider "aws" {
   region = var.aws_region
 }
 
-# Module Networking (VPC, Subnets, Security Groups)
 module "networking" {
   source = "./modules/networking"
 
@@ -22,7 +21,6 @@ module "networking" {
   public_subnet_cidr = "10.0.1.0/24"
 }
 
-# Module Database (MongoDB)
 module "database" {
   source = "./modules/database"
 
@@ -33,7 +31,6 @@ module "database" {
   subnet_id         = module.networking.public_subnet_id
 }
 
-# Module Backend (API)
 module "backend" {
   source = "./modules/backend"
 
@@ -44,7 +41,6 @@ module "backend" {
   subnet_id         = module.networking.public_subnet_id
 }
 
-# Module Frontend (Web)
 module "frontend" {
   source = "./modules/frontend"
 

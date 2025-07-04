@@ -8,13 +8,9 @@
 	let error = null;
 	let newUser = { name: '', email: '' };
 	
-	// Configuration de l'URL de l'API
-	// En développement, utiliser localhost, en production utiliser la variable d'environnement
 	let API_URL = __BACKEND_URL__ || 'http://localhost:3000';
-	// Ajouter /api à l'URL de base
 	API_URL = `${API_URL}/api`;
-	
-	// Debug: Afficher l'URL utilisée
+
 	console.log('🔧 Backend URL utilisée:', API_URL);
 	
 	onMount(() => {
@@ -30,7 +26,7 @@
 			users = await response.json();
 		} catch (e) {
 			error = e.message;
-			console.error('Erreur:', e);
+			console.error(e);
 		} finally {
 			loading = false;
 		}

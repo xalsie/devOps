@@ -7,22 +7,17 @@ import css from 'rollup-plugin-css-only';
 import replace from '@rollup/plugin-replace';
 import { spawn } from 'child_process';
 import dotenv from 'dotenv';
-
 dotenv.config({ path: '.env.production' });
-
 const production = !process.env.ROLLUP_WATCH;
 
-// Debug: Afficher la valeur de VITE_BACKEND_URL
 console.log('🔧 VITE_BACKEND_URL:', process.env.VITE_BACKEND_URL);
 console.log('🔧 Production mode:', production);
 
 function serve() {
 	let server;
-
 	function toExit() {
 		if (server) server.kill(0);
 	}
-
 	return {
 		writeBundle() {
 			if (server) return;
@@ -30,13 +25,11 @@ function serve() {
 				stdio: ['ignore', 'inherit', 'inherit'],
 				env: { ...process.env, NODE_ENV: 'development' }
 			});
-
 			process.on('SIGTERM', toExit);
 			process.on('exit', toExit);
 		}
 	};
 }
-
 export default {
 	input: 'src/main.js',
 	output: {
@@ -46,11 +39,6 @@ export default {
 		file: 'public/build/bundle.js'
 	},
 	plugins: [
-		replace({
-			'process.env.NODE_ENV': JSON.stringify(production ? 'production' : 'development'),
-			'__BACKEND_URL__': JSON.stringify(process.env.VITE_BACKEND_URL || 'http://localhost:3000'),
-			preventAssignment: true
-		}),
 		svelte({
 			compilerOptions: {
 				dev: !production
@@ -62,6 +50,11 @@ export default {
 			dedupe: ['svelte']
 		}),
 		commonjs(),
+		replace({
+			'process.env.NODE_ENV': JSON.stringify(production ? 'production' : 'development'),
+			'__BACKEND_URL__': JSON.stringify(process.env.VITE_BACKEND_URL || 'http://localhost:3000'),
+			preventAssignment: true
+		}),
 		!production && serve(),
 		!production && livereload('public'),
 		production && terser()

@@ -1,4 +1,3 @@
-# VPC
 resource "aws_vpc" "main" {
   cidr_block           = var.vpc_cidr
   enable_dns_hostnames = true
@@ -9,7 +8,6 @@ resource "aws_vpc" "main" {
   }
 }
 
-# Internet Gateway
 resource "aws_internet_gateway" "main" {
   vpc_id = aws_vpc.main.id
 
@@ -18,7 +16,6 @@ resource "aws_internet_gateway" "main" {
   }
 }
 
-# Public Subnet
 resource "aws_subnet" "public" {
   vpc_id                  = aws_vpc.main.id
   cidr_block              = var.public_subnet_cidr
@@ -30,7 +27,6 @@ resource "aws_subnet" "public" {
   }
 }
 
-# Route Table
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.main.id
 
@@ -44,18 +40,15 @@ resource "aws_route_table" "public" {
   }
 }
 
-# Route Table Association
 resource "aws_route_table_association" "public" {
   subnet_id      = aws_subnet.public.id
   route_table_id = aws_route_table.public.id
 }
 
-# Security Group pour les instances web (frontend/backend)
 resource "aws_security_group" "web" {
   name_prefix = "${var.project_name}-web"
   vpc_id      = aws_vpc.main.id
 
-  # SSH
   ingress {
     from_port   = 22
     to_port     = 22
@@ -63,7 +56,6 @@ resource "aws_security_group" "web" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # HTTP
   ingress {
     from_port   = 80
     to_port     = 80
@@ -71,7 +63,6 @@ resource "aws_security_group" "web" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # Backend API
   ingress {
     from_port   = 3000
     to_port     = 3000
@@ -91,12 +82,10 @@ resource "aws_security_group" "web" {
   }
 }
 
-# Security Group pour MongoDB
 resource "aws_security_group" "database" {
   name_prefix = "${var.project_name}-db"
   vpc_id      = aws_vpc.main.id
 
-  # SSH
   ingress {
     from_port   = 22
     to_port     = 22
@@ -104,7 +93,6 @@ resource "aws_security_group" "database" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # MongoDB - seulement depuis le VPC
   ingress {
     from_port       = 27017
     to_port         = 27017
