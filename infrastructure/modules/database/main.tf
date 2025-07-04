@@ -34,25 +34,23 @@ resource "aws_instance" "mongodb" {
     curl -L "https://github.com/docker/compose/releases/download/v2.20.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
     chmod +x /usr/local/bin/docker-compose
     
-    # Créer un répertoire pour les données MongoDB
     mkdir -p /data/mongodb
     chown ec2-user:ec2-user /data/mongodb
   EOF
 
-  # Volume EBS pour la persistance des données
   root_block_device {
     volume_type = "gp3"
-    volume_size = 20
+    volume_size = 30
     encrypted   = true
-    
+
     tags = {
       Name = "${var.project_name}-mongodb-root"
     }
   }
 
   tags = {
-    Name = "${var.project_name}-mongodb"
-    Role = "database"
+    Name    = "${var.project_name}-mongodb"
+    Role    = "database"
     Service = "mongodb"
   }
 }

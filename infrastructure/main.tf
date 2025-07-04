@@ -15,9 +15,9 @@ provider "aws" {
 # Module Networking (VPC, Subnets, Security Groups)
 module "networking" {
   source = "./modules/networking"
-  
-  project_name        = var.project_name
-  aws_region          = var.aws_region
+
+  project_name       = var.project_name
+  aws_region         = var.aws_region
   vpc_cidr           = "10.0.0.0/16"
   public_subnet_cidr = "10.0.1.0/24"
 }
@@ -25,7 +25,7 @@ module "networking" {
 # Module Database (MongoDB)
 module "database" {
   source = "./modules/database"
-  
+
   project_name      = var.project_name
   instance_type     = "t3.micro"
   ssh_key_name      = var.ssh_key_name
@@ -36,7 +36,7 @@ module "database" {
 # Module Backend (API)
 module "backend" {
   source = "./modules/backend"
-  
+
   project_name      = var.project_name
   instance_type     = "t3.micro"
   ssh_key_name      = var.ssh_key_name
@@ -47,7 +47,7 @@ module "backend" {
 # Module Frontend (Web)
 module "frontend" {
   source = "./modules/frontend"
-  
+
   project_name      = var.project_name
   instance_type     = "t3.micro"
   ssh_key_name      = var.ssh_key_name

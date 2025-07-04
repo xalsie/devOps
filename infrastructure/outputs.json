@@ -2,66 +2,118 @@
   "backend_private_ip": {
     "sensitive": false,
     "type": "string",
-    "value": "10.0.1.170"
+    "value": "10.0.1.140"
   },
   "backend_public_ip": {
     "sensitive": false,
     "type": "string",
-    "value": "13.36.178.39"
-  },
-  "backend_security_groups": {
-    "sensitive": false,
-    "type": [
-      "set",
-      "string"
-    ],
-    "value": [
-      "sg-0a8815210581b1006"
-    ]
+    "value": "13.38.25.98"
   },
   "frontend_private_ip": {
     "sensitive": false,
     "type": "string",
-    "value": "10.0.1.44"
+    "value": "10.0.1.237"
   },
   "frontend_public_ip": {
     "sensitive": false,
     "type": "string",
-    "value": "13.38.54.47"
+    "value": "15.237.197.117"
+  },
+  "instances_info": {
+    "sensitive": false,
+    "type": [
+      "object",
+      {
+        "backend": [
+          "object",
+          {
+            "instance_id": "string",
+            "private_ip": "string",
+            "public_ip": "string"
+          }
+        ],
+        "database": [
+          "object",
+          {
+            "instance_id": "string",
+            "private_ip": "string",
+            "public_ip": "string"
+          }
+        ],
+        "frontend": [
+          "object",
+          {
+            "instance_id": "string",
+            "private_ip": "string",
+            "public_ip": "string"
+          }
+        ]
+      }
+    ],
+    "value": {
+      "backend": {
+        "instance_id": "i-0195506a820da17c7",
+        "private_ip": "10.0.1.140",
+        "public_ip": "13.38.25.98"
+      },
+      "database": {
+        "instance_id": "i-0c4f0f1e8708a543a",
+        "private_ip": "10.0.1.130",
+        "public_ip": "15.188.23.98"
+      },
+      "frontend": {
+        "instance_id": "i-0d29c152b9ab6274b",
+        "private_ip": "10.0.1.237",
+        "public_ip": "15.237.197.117"
+      }
+    }
   },
   "mongodb_private_ip": {
     "sensitive": false,
     "type": "string",
-    "value": "10.0.1.144"
+    "value": "10.0.1.130"
   },
   "mongodb_public_ip": {
     "sensitive": false,
     "type": "string",
-    "value": "35.180.187.102"
+    "value": "15.188.23.98"
   },
-  "security_group_id": {
+  "networking_info": {
     "sensitive": false,
-    "type": "string",
-    "value": "sg-0a8815210581b1006"
+    "type": [
+      "object",
+      {
+        "database_security_group_id": "string",
+        "public_subnet_id": "string",
+        "vpc_id": "string",
+        "web_security_group_id": "string"
+      }
+    ],
+    "value": {
+      "database_security_group_id": "sg-0f7a5a93d65aebb1d",
+      "public_subnet_id": "subnet-086705abb8f4e80b0",
+      "vpc_id": "vpc-0170f7970561e6507",
+      "web_security_group_id": "sg-0cc3d027a1122c8ef"
+    }
   },
   "ssh_connection_backend": {
     "sensitive": false,
     "type": "string",
-    "value": "ssh -i ~/.ssh/aws-devops.pem ec2-user@13.36.178.39"
+    "value": "ssh -i ~/.ssh/aws-devops.pem ec2-user@13.38.25.98"
   },
   "ssh_connection_frontend": {
     "sensitive": false,
     "type": "string",
-    "value": "ssh -i ~/.ssh/aws-devops.pem ec2-user@13.38.54.47"
+    "value": "ssh -i ~/.ssh/aws-devops.pem ec2-user@15.237.197.117"
   },
   "ssh_connection_mongodb": {
     "sensitive": false,
     "type": "string",
-    "value": "ssh -i ~/.ssh/aws-devops.pem ec2-user@35.180.187.102"
+    "value": "ssh -i ~/.ssh/aws-devops.pem ec2-user@15.188.23.98"
   },
   "vpc_id": {
     "sensitive": false,
     "type": "string",
-    "value": "vpc-0a3614021650d3a98"
+    "value": "vpc-0170f7970561e6507"
   }
 }

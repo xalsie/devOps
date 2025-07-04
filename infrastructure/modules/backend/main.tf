@@ -40,8 +40,8 @@ resource "aws_instance" "backend" {
   EOF
 
   tags = {
-    Name = "${var.project_name}-backend"
-    Role = "backend"
+    Name    = "${var.project_name}-backend"
+    Role    = "backend"
     Service = "api"
   }
 }

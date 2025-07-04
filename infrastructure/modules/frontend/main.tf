@@ -36,8 +36,8 @@ resource "aws_instance" "frontend" {
   EOF
 
   tags = {
-    Name = "${var.project_name}-frontend"
-    Role = "frontend"
+    Name    = "${var.project_name}-frontend"
+    Role    = "frontend"
     Service = "web"
   }
 }

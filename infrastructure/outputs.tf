@@ -53,8 +53,8 @@ output "networking_info" {
   description = "Informations sur le réseau"
   value = {
     vpc_id                     = module.networking.vpc_id
-    public_subnet_id          = module.networking.public_subnet_id
-    web_security_group_id     = module.networking.web_security_group_id
+    public_subnet_id           = module.networking.public_subnet_id
+    web_security_group_id      = module.networking.web_security_group_id
     database_security_group_id = module.networking.database_security_group_id
   }
 }
@@ -78,14 +78,4 @@ output "instances_info" {
       private_ip  = module.frontend.private_ip
     }
   }
-}
-
-output "security_group_id" {
-  description = "ID of the security group"
-  value       = aws_security_group.web.id
-}
-
-output "backend_security_groups" {
-  description = "Security groups attached to backend instance"
-  value       = aws_instance.backend.vpc_security_group_ids
 }
