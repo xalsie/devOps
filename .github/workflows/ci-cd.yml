@@ -48,7 +48,6 @@ jobs:
         npm run build
         npm run validate
         
-    # Terraform validation
     - name: Setup Terraform
       uses: hashicorp/setup-terraform@v3
       with:
@@ -99,7 +98,7 @@ jobs:
       run: |
         # Vérifier outputs.json
         if [ ! -f "infrastructure/outputs.json" ]; then
-          echo "❌ outputs.json manquant - utilisation de localhost"
+          echo "outputs.json manquant - utilisation de localhost"
           echo "BACKEND_PUBLIC_IP=localhost" >> $GITHUB_ENV
           exit 0
         fi
@@ -210,10 +209,10 @@ jobs:
         
         # Verify inventory
         if [ -f "inventory.ini" ]; then
-          echo "✅ Inventory généré:"
+          echo "Inventory généré:"
           cat inventory.ini
         else
-          echo "❌ inventory.ini manquant"
+          echo "inventory.ini manquant"
           exit 1
         fi
         
@@ -234,37 +233,37 @@ jobs:
     - name: Success notification for main branch
       if: needs.build-and-deploy.result == 'success' && github.ref == 'refs/heads/main'
       run: |
-        echo "🎉 CI/CD Pipeline terminée avec succès sur MAIN!"
-        echo "✅ Validation: Backend, Frontend, Terraform"
-        echo "✅ Images Docker buildées et poussées"
-        echo "📦 Images disponibles:"
+        echo "CI/CD Pipeline terminée avec succès sur MAIN!"
+        echo "Validation: Backend, Frontend, Terraform"
+        echo "Images Docker buildées et poussées"
+        echo "Images disponibles:"
         echo "   - ${{ env.IMAGE_NAME_BACKEND }}:${{ github.ref_name }}"
         echo "   - ${{ env.IMAGE_NAME_FRONTEND }}:${{ github.ref_name }}"
         if [ "${{ needs.deploy.result }}" = "success" ]; then
-          echo "🚀 Déploiement automatique réussi!"
+          echo "Déploiement automatique réussi!"
         else
-          echo "⏳ Déploiement en cours ou manuel requis..."
+          echo "Déploiement en cours ou manuel requis..."
         fi
         
     - name: Success notification for develop branch
       if: needs.build-and-deploy.result == 'success' && github.ref == 'refs/heads/develop'
       run: |
-        echo "🎉 CI/CD Pipeline terminée avec succès sur DEVELOP!"
-        echo "✅ Validation: Backend, Frontend, Terraform"
-        echo "✅ Images Docker buildées et poussées"
-        echo "📦 Images disponibles:"
+        echo "CI/CD Pipeline terminée avec succès sur DEVELOP!"
+        echo "Validation: Backend, Frontend, Terraform"
+        echo "Images Docker buildées et poussées"
+        echo "Images disponibles:"
         echo "   - ${{ env.IMAGE_NAME_BACKEND }}:${{ github.ref_name }}"
         echo "   - ${{ env.IMAGE_NAME_FRONTEND }}:${{ github.ref_name }}"
-        echo "ℹ️  Pas de déploiement automatique sur develop"
-        echo "💡 Pour déployer: mergez sur main ou utilisez workflow_dispatch"
+        echo "Pas de déploiement automatique sur develop"
+        echo "Pour déployer: mergez sur main ou utilisez workflow_dispatch"
         
     - name: Deploy success notification
       if: needs.deploy.result == 'success'
       run: |
-        echo "🚀 Déploiement Ansible réussi!"
-        echo "🌐 Application accessible sur les IPs configurées"
+        echo "Déploiement Ansible réussi!"
+        echo "Application accessible sur les IPs configurées"
         
     - name: Failure notification
       if: needs.build-and-deploy.result == 'failure' || needs.deploy.result == 'failure'
       run: |
-        echo "❌ Pipeline échouée - vérifiez les logs"
+        echo "Pipeline échouée - vérifiez les logs"

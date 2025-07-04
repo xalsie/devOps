@@ -9,7 +9,7 @@
     "dev": "rollup -c -w",
     "start": "sirv public --no-cors --host --dev --port 8080",
     "validate": "svelte-check",
-    "lint": "echo 'Running lint...' && node -e 'console.log(\"✅ Lint passed - no linter configured yet\")'"
+    "lint": "echo 'Running lint...' && node -e 'console.log(\"Lint passed - no linter configured yet\")'"
   },
   "devDependencies": {
     "@rollup/plugin-commonjs": "^25.0.0",

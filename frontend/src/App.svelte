@@ -73,7 +73,7 @@
 <main>
 	<div class="container">
 		<header>
-			<h1>🚀 {name}</h1>
+			<h1>{name}</h1>
 			<p>Application frontend Svelte avec backend Node.js</p>
 		</header>
 		
@@ -103,7 +103,7 @@
 				<div class="loading">Chargement...</div>
 			{:else if error}
 				<div class="error">
-					<p>❌ Erreur: {error}</p>
+					<p>Erreur: {error}</p>
 					<button on:click={fetchUsers}>Réessayer</button>
 				</div>
 			{:else if users.length === 0}

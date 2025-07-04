@@ -9,7 +9,7 @@ RUN npm ci
 COPY . .
 RUN echo "# Configuration générée depuis les arguments Docker" > .env.production && \
     echo "VITE_BACKEND_URL=${VITE_BACKEND_URL}" >> .env.production && \
-    echo "✅ Fichier .env.production créé avec VITE_BACKEND_URL=${VITE_BACKEND_URL}"
+    echo "Fichier .env.production créé avec VITE_BACKEND_URL=${VITE_BACKEND_URL}"
 RUN cat .env.production
 RUN npm run build
 FROM nginx:alpine
