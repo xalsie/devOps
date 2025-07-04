@@ -27,11 +27,11 @@
         append: yes
       
     - name: Delete image frontend
-      command: docker rmi ghcr.io/xalsie/devops/frontend:latest --force
+      command: docker rmi ghcr.io/xalsie/devops/frontend:main --force
       ignore_errors: yes
 
     - name: Delete image backend
-      command: docker rmi ghcr.io/xalsie/devops/backend:latest --force
+      command: docker rmi ghcr.io/xalsie/devops/backend:main --force
       ignore_errors: yes
 
 - name: Deploy MongoDB
@@ -65,7 +65,7 @@
     - name: Create Backend container
       docker_container:
         name: backend
-        image: ghcr.io/xalsie/devops/backend:latest
+        image: ghcr.io/xalsie/devops/backend:main
         state: started
         restart_policy: always
         ports:
@@ -89,7 +89,7 @@
     - name: Create Frontend container
       docker_container:
         name: frontend
-        image: ghcr.io/xalsie/devops/frontend:latest
+        image: ghcr.io/xalsie/devops/frontend:main
         state: started
         restart_policy: always
         ports:

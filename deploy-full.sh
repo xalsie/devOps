@@ -168,7 +168,7 @@ generate_config_files() {
     
     # Génération du fichier .env pour le frontend
     log_info "Génération du fichier .env pour le frontend..."
-    cat > frontend/.env << EOF
+    cat > frontend/.env.production << EOF
 # Configuration générée automatiquement depuis les outputs Terraform
 VITE_BACKEND_URL=http://$BACKEND_PUBLIC_IP:3000
 EOF
@@ -400,6 +400,8 @@ show_help() {
     echo
     echo "Commands:"
     echo "  deploy   - Déploie l'infrastructure complète (4 étapes)"
+    echo "  build    - Déploie l'infrastructure partielle (build seulement)"
+    echo "  ansible  - Déploie l'infrastructure avec Ansible (après build)"
     echo "  destroy  - Supprime toutes les ressources"
     echo "  info     - Affiche les informations de déploiement"
     echo "  help     - Affiche cette aide"
@@ -432,6 +434,15 @@ case "${1:-help}" in
         echo
         check_prerequisites
         build_and_push_images
+        deploy_with_ansible
+        show_deployment_info
+        ;;
+    "ansible")
+        echo "🚀 DÉPLOIEMENT AVEC ANSIBLE"
+        echo "=================================="
+        echo
+        check_prerequisites
+        generate_config_files
         deploy_with_ansible
         show_deployment_info
         ;;
