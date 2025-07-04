@@ -149,7 +149,7 @@ jobs:
       run: |
         # Extract metadata and build backend
         # tag correspond of name in branche
-        docker build -t ${{ env.IMAGE_NAME_BACKEND }}:${ github.ref_name } \
+        docker build -t ${{ env.IMAGE_NAME_BACKEND }}:${{ github.ref_name }} \
                     -t ${{ env.IMAGE_NAME_BACKEND }}:${{ github.sha }} \
                     ./backend
         docker push ${{ env.IMAGE_NAME_BACKEND }}:${{ github.ref_name }}
@@ -175,8 +175,10 @@ jobs:
     needs: [build-and-deploy]
     runs-on: ubuntu-latest
     if: |
-      (github.ref == 'refs/heads/main' && github.event.inputs.deploy_ansible == 'true') ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_ansible == 'true')
+      github.ref == 'refs/heads/main' && (
+        github.event_name == 'push' || 
+        (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_ansible == 'true')
+      )
     
     steps:
     - name: Checkout code
@@ -229,15 +231,32 @@ jobs:
     if: always()
     
     steps:
-    - name: Success notification
-      if: needs.build-and-deploy.result == 'success'
+    - name: Success notification for main branch
+      if: needs.build-and-deploy.result == 'success' && github.ref == 'refs/heads/main'
       run: |
-        echo "🎉 CI/CD Pipeline terminée avec succès!"
+        echo "🎉 CI/CD Pipeline terminée avec succès sur MAIN!"
         echo "✅ Validation: Backend, Frontend, Terraform"
         echo "✅ Images Docker buildées et poussées"
         echo "📦 Images disponibles:"
-        echo "   - ${{ env.IMAGE_NAME_BACKEND }}:latest"
-        echo "   - ${{ env.IMAGE_NAME_FRONTEND }}:latest"
+        echo "   - ${{ env.IMAGE_NAME_BACKEND }}:${{ github.ref_name }}"
+        echo "   - ${{ env.IMAGE_NAME_FRONTEND }}:${{ github.ref_name }}"
+        if [ "${{ needs.deploy.result }}" = "success" ]; then
+          echo "🚀 Déploiement automatique réussi!"
+        else
+          echo "⏳ Déploiement en cours ou manuel requis..."
+        fi
+        
+    - name: Success notification for develop branch
+      if: needs.build-and-deploy.result == 'success' && github.ref == 'refs/heads/develop'
+      run: |
+        echo "🎉 CI/CD Pipeline terminée avec succès sur DEVELOP!"
+        echo "✅ Validation: Backend, Frontend, Terraform"
+        echo "✅ Images Docker buildées et poussées"
+        echo "📦 Images disponibles:"
+        echo "   - ${{ env.IMAGE_NAME_BACKEND }}:${{ github.ref_name }}"
+        echo "   - ${{ env.IMAGE_NAME_FRONTEND }}:${{ github.ref_name }}"
+        echo "ℹ️  Pas de déploiement automatique sur develop"
+        echo "💡 Pour déployer: mergez sur main ou utilisez workflow_dispatch"
         
     - name: Deploy success notification
       if: needs.deploy.result == 'success'
